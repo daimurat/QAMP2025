@@ -1,0 +1,13 @@
+[project]
+name = "qiskit-human-eval"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "datasets>=4.2.0",
+    "openai>=2.6.0",
+    "qiskit>=2.2.2",
+    "qiskit-aer>=0.17.2",
+    "qiskit-ibm-runtime>=0.43.0",
+]
