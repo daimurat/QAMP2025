@@ -56,22 +56,6 @@ import sys
 from typing import Tuple
 import contextlib  # for contextlib.contextmanager
 
-def get_all_docs_from_qiskit_data():
-    all_docs = []
-    for filename in os.listdir("./qiskit-data/1.4"):
-        file_path = os.path.join("./qiskit-data/1.4", filename)
-        if filename.endswith('.pdf'):
-            loader = PyPDFLoader(file_path)
-            docs = loader.load()
-            all_docs.extend(docs)
-        elif filename.endswith(('.txt', '.py', '.ini', 'mdx')):
-            with open(file_path, 'r', encoding='utf-8') as f:
-                text = f.read()
-                all_docs.append(Document(
-                    page_content=text,
-                    metadata={"source": filename, "type": "code" if filename.endswith('.py') else "text"}
-                ))
-    return all_docs
 # --- Helper Functions ---
 def save_encrypted_key(encrypted_key, username):
     """Save encrypted key to file with username prefix"""
@@ -750,6 +734,7 @@ def call_code():
 def call_ai(context, user_input):
     agents = get_agents()
     if st.session_state.mode_is_fast == "Fast Mode":
+        """ Fast Mode """
         messages = build_messages(context, user_input, Initial_Agent_Instructions)
         response = []
         for chunk in st.session_state.llm.stream(messages):
@@ -757,17 +742,9 @@ def call_ai(context, user_input):
 
         response = "".join(response)
 
-        # Check if the answer contains code
-        #if "```python" in response:
-            # Add a note about code execution
-        #    response += "\n\n> 💡 **Note**: This answer contains code. If you want to execute it, type 'execute!' in the chat."
-        #    return Response(content=response)
-        #else:
-        #    return Response(content=response)
-
         return Response(content=response)
     else:
-        # New Groupchat Workflow for detailed mode
+        """ Deep Thought Mode """
         st.markdown("Thinking (Deep Thought Mode)... ")
         conversation_history = format_memory_messages(st.session_state.memory.messages)
         shared_context = ContextVariables(data =  {
@@ -1042,71 +1019,33 @@ with st.sidebar:
 
     st.markdown("---")  # Add a separator for better visual organization
 
-    st.markdown('<div class="sidebar-title">🧩 RAG data & Embeddings</div>', unsafe_allow_html=True)
-    # --- Helper for RAG Embedding Generation ---
-    def generate_and_save_embedding(index_path):
-        if not st.session_state.get("saved_api_key"):
-            st.error("OpenAI API key is required for embedding generation. Please enter your OpenAI API key.")
-            return
-        embeddings = OpenAIEmbeddings(
-            openai_api_key=st.session_state.get("saved_api_key")
-        )
-        all_docs = get_all_docs_from_qiskit_data()
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        def sanitize(documents):
-            for doc in documents:
-                doc.page_content = doc.page_content.encode("utf-8", "ignore").decode("utf-8")
-            return documents
-        splits = text_splitter.split_documents(all_docs)
-        splits = sanitize(splits)
-        st.session_state.vector_store = FAISS.from_documents(splits, embedding=embeddings)
-        st.session_state.vector_store.save_local(index_path)
-    
     # --- RAG/Embedding Section ---
+    st.markdown('<div class="sidebar-title">🧩 RAG data & Embeddings</div>', unsafe_allow_html=True)    
     if "vector_store" not in st.session_state:
         st.session_state.vector_store = None
 
-    embedding_status = st.empty()
-    index_path = "my_faiss_index"
-    index_file = os.path.join(index_path, "index.faiss")
-    index_exists = os.path.exists(index_file)
+    index_path = "faiss_index"
+    index_name = "qiskit_docs_index"
+    index_exists = os.path.exists(os.path.join(index_path, index_name+".faiss"))
 
     if st.session_state.vector_store:
         st.markdown("✅ OpenAI Embedding loaded from file")
-        if st.button("🔄 Regenerate embedding"):
-            embedding_status.info("🔄 Processing and embedding your RAG data with OpenAI... This might take a moment! ⏳")
-            generate_and_save_embedding(index_path)
-            embedding_status.empty()
-            st.rerun()
     elif index_exists:
-        st.markdown("🗂️ OpenAI Embedding file found on disk, but not loaded. Please load the embedding to use the agents!")
+        st.markdown("🗂️ OpenAI Embedding file found on disk, but not loaded. Start loading the embedding to use the agents!")
         if not st.session_state.get("saved_api_key"):
             st.error("OpenAI API key is required for loading embeddings. Please enter your OpenAI API key.")
         else:
             with st.spinner("Loading embeddings..."):
-                embeddings = OpenAIEmbeddings(
-                    openai_api_key=st.session_state.get("saved_api_key")
-                )
+                embeddings = OpenAIEmbeddings()
                 st.session_state.vector_store = FAISS.load_local(
                     folder_path=index_path,
+                    index_name=index_name,
                     embeddings=embeddings,
                     allow_dangerous_deserialization=True
                 )
                 st.rerun()
-        if st.button("🔄 Regenerate embedding"):
-            embedding_status.info("🔄 Processing and embedding your RAG data with OpenAI... This might take a moment! ⏳")
-            generate_and_save_embedding(index_path)
-            embedding_status.empty()
-            st.rerun()
     else:
         st.markdown("⚠️ No OpenAI embedding found. Please create the embedding to use the agents!")
-    
-        if st.button("🚀 Generate embedding"):
-            embedding_status.info("🔄 Processing and embedding your RAG data with OpenAI... This might take a moment! ⏳")
-            generate_and_save_embedding(index_path)
-            embedding_status.empty()
-            st.rerun()
-
 
     st.markdown("---")  # Add a separator for better visual organization
 
