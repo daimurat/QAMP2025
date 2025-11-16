@@ -25,6 +25,7 @@ from autogen.agentchat import initiate_group_chat
 from autogen.agentchat.group.patterns import AutoPattern
 from autogen.agentchat.group import ContextVariables
 from workflows.fast import fast_mode_stream
+from tools.retrieval_tool import RetrievalTool
 
 from autogen.coding import LocalCommandLineCodeExecutor, CodeBlock
 import matplotlib
@@ -171,15 +172,6 @@ def format_memory_messages(memory_messages):
         content = msg.content
         formatted += f"{role}: {content}\n\n"
     return formatted.strip()
-
-
-def retrieve_context(question):
-    docs = st.session_state.vector_store.similarity_search(question, k=4)
-    return "\n\n".join([doc.page_content for doc in docs])
-
-
-# Set up code execution environment
-#temp_dir = tempfile.TemporaryDirectory()
 
 class PlotAwareExecutor(LocalCommandLineCodeExecutor):
     def __init__(self, **kwargs):
@@ -375,7 +367,8 @@ def call_code():
             #    st.session_state.debug_messages.append(("Formatted Corrected Answer", formatted_answer))
 
             # get context on error message
-            context = retrieve_context(execution_output)
+            retrieval_tool = RetrievalTool(vector_store=st.session_state.vector_store)
+            context = retrieval_tool.retrieve(execution_output)
 
             review_message = f"""
             Context:\n{context}\n\nQuestion:
@@ -843,7 +836,9 @@ if user_input:
     with st.chat_message("user"):
         st.markdown(user_input)
 
-    context = retrieve_context(user_input)
+    # Retrieve relevant documents from vector store
+    retrieval_tool = RetrievalTool(vector_store=st.session_state.vector_store)
+    context = retrieval_tool.retrieve(user_input)
     
     # Count prompt tokens using tiktoken if needed
     try:
