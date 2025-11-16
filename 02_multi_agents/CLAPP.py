@@ -842,15 +842,10 @@ if user_input:
 
     # Stream assistant response
     with st.chat_message("assistant"):
-        stream_box = st.empty()
-        stream_handler = StreamHandler(stream_box)
-        
-        # Check if this is an execution request
-        if user_input.strip().lower() == "execute!" or user_input.strip().lower() == "plot!":
-            response = call_code()
+        if st.session_state.mode_is_fast == "Fast Mode":
+            stream_box = st.empty()
+            stream_handler = StreamHandler(stream_box)
 
-        elif st.session_state.mode_is_fast == "Fast Mode":
-            """ Fast Mode """
             content = []
             llm_stream = fast_mode_stream(user_input, context, st.session_state.memory.messages, stream_handler)
             for chunk in llm_stream:
