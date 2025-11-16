@@ -70,10 +70,17 @@ This project uses conda/mamba for environment management, which is compatible wi
    * Keys are saved as `{username}_encrypted_api_key` to allow multiple users.
    * Get your free Gemini key from https://aistudio.google.com/app/apikey
 
-5. **qiskit Data:**
+5. **environment variables file:**
+   * You need to create a `.env` file in the root directory of the project.
+
+   ```.env
+   OPENAI_API_KEY=<your-openai-api-key>
+   ```
+
+6. **qiskit Data:**
    * Ensure the `qiskit-data` directory contains the necessary qiskit documentation for the RAG system.
 
-6. **System Prompts:**
+7. **System Prompts:**
    * Ensure the `prompts/` directory contains the necessary instruction files (`qiskit_instructions.txt`, `review_instructions.txt`, etc.).
 
 ## Usage
