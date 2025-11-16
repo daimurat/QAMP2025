@@ -165,14 +165,6 @@ def init_session():
 init_session()
 
 
-def format_memory_messages(memory_messages):
-    formatted = ""
-    for msg in memory_messages:
-        role = msg.type.capitalize()  # 'human' -> 'Human'
-        content = msg.content
-        formatted += f"{role}: {content}\n\n"
-    return formatted.strip()
-
 class PlotAwareExecutor(LocalCommandLineCodeExecutor):
     def __init__(self, **kwargs):
         import tempfile
