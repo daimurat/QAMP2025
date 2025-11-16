@@ -11,6 +11,8 @@ import json
 import os
 import base64
 
+from dotenv import load_dotenv
+
 from cryptography.fernet import Fernet
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -161,7 +163,7 @@ def init_session():
     if "agents" not in st.session_state:
         st.session_state.agents = None
 
-
+load_dotenv()
 init_session()
 
 
