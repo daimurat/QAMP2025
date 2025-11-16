@@ -10,51 +10,30 @@ import time
 import json
 import os
 import base64
-import getpass
-from collections import defaultdict
-
 
 from cryptography.fernet import Fernet
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_community.vectorstores import FAISS
-from langchain_community.document_loaders import PyPDFLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_core.documents import Document
-from autogen.agentchat.group import OnCondition, StringLLMCondition
 
 from langchain_openai import OpenAIEmbeddings
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from pydantic import BaseModel, Field
-from typing import Annotated
-
-
-from autogen import ConversableAgent, LLMConfig, UpdateSystemMessage, ContextExpression
-
 from autogen.agentchat import initiate_group_chat
 from autogen.agentchat.group.patterns import AutoPattern
-from autogen.agentchat.group import ReplyResult, AgentNameTarget, OnContextCondition, ExpressionContextCondition
-from autogen.agentchat.group import AgentTarget, RevertToUserTarget, TerminateTarget, NestedChatTarget
-from typing import Annotated
 from autogen.agentchat.group import ContextVariables
 from workflows.fast import fast_mode_stream
 
-#import google.generativeai as genai
-
-import tempfile
 from autogen.coding import LocalCommandLineCodeExecutor, CodeBlock
 import matplotlib
 matplotlib.use('Agg')  # Set the backend to Agg before importing pyplot
 import matplotlib.pyplot as plt
 import io
-from PIL import Image
 import re
 import subprocess
 import sys
-from typing import Tuple
 import contextlib  # for contextlib.contextmanager
 
 # --- Helper Functions ---
