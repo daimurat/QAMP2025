@@ -40,6 +40,7 @@ from autogen.agentchat.group import ReplyResult, AgentNameTarget, OnContextCondi
 from autogen.agentchat.group import AgentTarget, RevertToUserTarget, TerminateTarget, NestedChatTarget
 from typing import Annotated
 from autogen.agentchat.group import ContextVariables
+from workflows.fast import fast_mode_stream
 
 #import google.generativeai as genai
 
@@ -153,13 +154,6 @@ GPT_MODELS = [ "gpt-4o-mini", "gpt-4o", "gpt-4.1"]
 GEMINI_MODELS = [ "gemini-2.5-flash-lite","gemini-2.5-flash", "gemini-2.5-pro"]
 #ALL_MODELS = GPT_MODELS + GEMINI_MODELS
 
-# New prompts for the swarm
-Initial_Agent_Instructions = read_prompt_from_file("prompts/qiskit_instructions.txt") # Reuse or adapt qiskit_instructions
-Refine_Agent_Instructions = read_prompt_from_file("prompts/qiskit_refinement.txt") # Instructions on imporving an answer
-Review_Agent_Instructions = read_prompt_from_file("prompts/review_instructions.txt") # Adapt rating_instructions
-Formatting_Agent_Instructions = read_prompt_from_file("prompts/formatting_instructions.txt") # New prompt file
-Code_Execution_Agent_Instructions = read_prompt_from_file("prompts/codeexecutor_instructions.txt") # New prompt file
-
 # --- Initialize Session State ---
 def init_session():
     if "messages" not in st.session_state:
@@ -190,24 +184,6 @@ def init_session():
 
 init_session()
 
-
-
-
-# --- Retrieval + Prompt Construction ---
-def build_messages(context, question, system):
-    system_msg = SystemMessage(content=system)
-    human_msg = HumanMessage(content=f"Context:\n{context}\n\nQuestion:\n{question}")
-    return [system_msg] + st.session_state.memory.messages + [human_msg]
-
-#def build_messages_rating(context, question, answer, system):
-#    system_msg = SystemMessage(content=system)
-#    human_msg = HumanMessage(content=f"Context:\n{context}\n\nQuestion:\n{question}\n\nAI Answer:\n{answer}")
-#    return [system_msg] + st.session_state.memory.messages + [human_msg]
-
-#def build_messages_refinement(context, question, answer, feedback, system):
-#    system_msg = SystemMessage(content=system)
-#    human_msg = HumanMessage(content=f"Context:\n{context}\n\nQuestion:\n{question}\n\nAI Answer:\n{answer}\n\nReviewer Feedback:\n{feedback}")
-#    return [system_msg] + st.session_state.memory.messages + [human_msg]
 
 def format_memory_messages(memory_messages):
     formatted = ""
@@ -327,172 +303,6 @@ class PlotAwareExecutor(LocalCommandLineCodeExecutor):
 executor = PlotAwareExecutor(timeout=10)
 
 # Global agent configurations
-
-
-
-def review_reply(feedback: Annotated[str,"Feedback on improving this reply to be accurate and relavant for the user prompt"], rating: Annotated[int,"The rating of the reply on a scale of 1 to 10"], context_variables: ContextVariables) -> ReplyResult:
-    """Review the reply of the Ai Agent to the user prompt with respect to correctness, clarity and relevance for the user prompt"""
-    context_variables["feedback"] = feedback
-    context_variables["rating"] = rating
-    context_variables["revisions"] += 1
-
-    
-    messages = list(st.session_state.agents['qiskit_agent'].chat_messages.values())[0]
-
-
-    #st.markdown(messages[-2])
-    reply = None
-    for item in messages:
-        if item['name'] == 'qiskit_agent' or item['name'] == 'improve_reply_agent':
-            reply = item["content"]
-       
-            #  st.markdown("Last message from agent:")
-            #  st.markdown(reply)
-
-    if reply:
-        context_variables["last_answer"] = reply
-   
-    
-    if rating < 8 and context_variables["revisions"] < 3:
-
-        return ReplyResult(
-            context_variables=context_variables,
-            target=AgentNameTarget("improve_reply_agent"),
-            message=f'Please revise the answer considering this feedback {feedback}',
-        )
-    elif rating >= 8:
-        #st.markdown("Formatting final answer...")
-
-        return ReplyResult(
-            context_variables=context_variables,
-            target=AgentNameTarget("improve_reply_agent_final"),
-            message=f'The answer is already of sufficient quality. Focus on formatting the reply',
-        )
-    else:
-        return ReplyResult(
-            context_variables=context_variables,
-            target=AgentNameTarget("improve_reply_agent_final"),
-            message=f'Please revise the answer considering this feedback {feedback}',
-        )
-
-
-def get_agents():
-    if st.session_state.selected_model in GPT_MODELS:
-        initial_config = LLMConfig(
-            api_type="openai",
-            model=st.session_state.selected_model,
-            temperature=0.2,
-            api_key=st.session_state.get("saved_api_key"),
-        )
-        review_config = LLMConfig(
-            api_type="openai",
-            model=st.session_state.selected_model,
-            temperature=0.5,
-            api_key=st.session_state.get("saved_api_key"),
-        )
-        qiskit_agent = ConversableAgent(
-            name="qiskit_agent",
-            system_message=Initial_Agent_Instructions,
-            description="Initial agent that answers user prompt. Expert in the CLASS code",
-            human_input_mode="NEVER",
-            llm_config=initial_config
-        )
-        review_agent = ConversableAgent(
-            name="review_agent",
-            update_agent_state_before_reply=[
-                UpdateSystemMessage(Review_Agent_Instructions),
-            ],
-            human_input_mode="NEVER",
-            description="Reviews the AI answer to user prompt",
-            llm_config=review_config,
-            functions=review_reply,
-        )
-        refine_agent = ConversableAgent(
-            name="improve_reply_agent",
-            update_agent_state_before_reply=[
-                UpdateSystemMessage(Refine_Agent_Instructions),
-            ],
-            human_input_mode="NEVER",
-            description="Improves the AI reply by taking into account the feedback",
-            llm_config=initial_config,
-        )
-        refine_agent_final = ConversableAgent(
-            name="improve_reply_agent_final",
-            update_agent_state_before_reply=[
-                UpdateSystemMessage(Refine_Agent_Instructions),
-            ],
-            human_input_mode="NEVER",
-            description="Improves the AI reply by taking into account the feedback",
-            llm_config=initial_config,
-        )
-        qiskit_agent.handoffs.set_after_work(AgentTarget(review_agent))
-        review_agent.handoffs.set_after_work(AgentTarget(refine_agent))
-        refine_agent.handoffs.set_after_work(AgentTarget(review_agent))
-        refine_agent_final.handoffs.set_after_work(TerminateTarget())
-        refine_agent.handoffs.add_llm_conditions([
-            OnCondition(target=AgentTarget(refine_agent_final), condition=StringLLMCondition(prompt="The reply to the latest user question has been reviewd and received a favarable rating (equivalent to 7 or higher)"))
-        ])
-        st.session_state.agents = {
-            "qiskit_agent": qiskit_agent,
-            "review_agent": review_agent,
-            "refine_agent": refine_agent,
-            "refine_agent_final": refine_agent_final,
-            "initial_config": initial_config,
-            "refine_agent_gai": None,
-        }
-        return st.session_state.agents
-    elif st.session_state.selected_model in GEMINI_MODELS:
-        initial_config_gai = LLMConfig(
-            api_type="google",
-            model=st.session_state.selected_model,
-            temperature=0.2,
-            api_key=st.session_state.get("saved_api_key_gai"),
-        )
-        review_config_gai = LLMConfig(
-            api_type="google",
-            model=st.session_state.selected_model,
-            temperature=0.5,
-            api_key=st.session_state.get("saved_api_key_gai"),
-        )
-        qiskit_agent_gai = ConversableAgent(
-            name="qiskit_agent",
-            system_message=Initial_Agent_Instructions,
-            description="Initial agent that answers user prompt. Expert in the CLASS code",
-            human_input_mode="NEVER",
-            llm_config=initial_config_gai
-        )
-        refine_agent_gai = ConversableAgent(
-            name="improve_reply_agent",
-            update_agent_state_before_reply=[
-                UpdateSystemMessage(Refine_Agent_Instructions),
-            ],
-            human_input_mode="NEVER",
-            description="Improves the AI reply by taking into account the feedback",
-            llm_config=initial_config_gai,
-        )
-        review_agent_gai = ConversableAgent(
-            name="review_agent",
-            update_agent_state_before_reply=[
-                UpdateSystemMessage(Review_Agent_Instructions),
-            ],
-            human_input_mode="NEVER",
-            description="Reviews the AI answer to user prompt",
-            llm_config=review_config_gai,
-            #functions=review_reply,  # functions often not working as planned with gemini
-        )
-        qiskit_agent_gai.handoffs.set_after_work(AgentTarget(review_agent_gai))
-        review_agent_gai.handoffs.set_after_work(AgentTarget(refine_agent_gai))
-        refine_agent_gai.handoffs.set_after_work(TerminateTarget())
-        st.session_state.agents = {
-            "qiskit_agent_gai": qiskit_agent_gai,
-            "review_agent_gai": review_agent_gai,
-            "refine_agent_gai": refine_agent_gai,
-            "initial_config_gai": initial_config_gai,
-            "refine_agent_final": None,
-        }
-        return st.session_state.agents
-    else:
-        return {}
 
 def call_code():
     agents = get_agents()
@@ -730,86 +540,6 @@ def call_code():
         response = Response(content="No code found to execute in the previous messages.")
 
     return response
-
-def call_ai(context, user_input):
-    agents = get_agents()
-    if st.session_state.mode_is_fast == "Fast Mode":
-        """ Fast Mode """
-        messages = build_messages(context, user_input, Initial_Agent_Instructions)
-        response = []
-        for chunk in st.session_state.llm.stream(messages):
-            response.append(chunk.content)  # or chunk if using token chunks
-
-        response = "".join(response)
-
-        return Response(content=response)
-    else:
-        """ Deep Thought Mode """
-        st.markdown("Thinking (Deep Thought Mode)... ")
-        conversation_history = format_memory_messages(st.session_state.memory.messages)
-        shared_context = ContextVariables(data =  {
-            "user_prompt": user_input,
-            "last_answer": "see chat history",
-            "feedback": "see chat history",
-            "rating": 0,
-            "revisions": 0,
-        })
-        if st.session_state.selected_model in GEMINI_MODELS:
-            pattern = AutoPattern(
-                initial_agent=agents["qiskit_agent_gai"],
-                agents=[agents["qiskit_agent_gai"],agents["review_agent_gai"],agents["refine_agent_gai"]],
-                group_manager_args={"llm_config": agents["initial_config_gai"]},
-                context_variables=shared_context,
-            )
-        else:
-            pattern = AutoPattern(
-                initial_agent=agents["qiskit_agent"],
-                agents=[agents["qiskit_agent"],agents["review_agent"],agents["refine_agent"],agents["refine_agent_final"]],
-                group_manager_args={"llm_config": agents["initial_config"]},
-                context_variables=shared_context,
-            )
-        st.markdown("Generating answer...")
-        result, context_variables, last_agent = initiate_group_chat(
-            pattern=pattern,
-            messages=f"Context from documents: {context}\n\nConversation history:\n{conversation_history}\n\nUser question: {user_input}",
-            max_rounds=10,
-        )
-        formatted_answer = None  # default to nothing
-
-        # 1. If the formatting agent gave the last reply, use that
-        if last_agent == agents["refine_agent_final"] or last_agent == agents["refine_agent_gai"]:
-            formatted_answer = result.chat_history[-1]["content"]
-
-    
-        # 2. Otherwise, use shared_context["last_answer"] if it's non-empty
-        if not formatted_answer and shared_context.get("last_answer"):
-            formatted_answer = shared_context["last_answer"]
-                   
-        # 3. Otherwise, fall back to the initial agent's last message
-    
-        if not formatted_answer:
-            try:
-                for item in result.chat_history:
-                    st.markdown(item)
-                    if item['name'] == 'qiskit_agent' or item['name'] == 'imporve_reply_agent':
-                        formatted_answer = item["content"]
-            except:
-                formatted_answer = 'failed to load chat history'
-        
-
-        if st.session_state.debug:
-            st.session_state.debug_messages.append(("Formatted Answer", formatted_answer))
-            st.session_state.debug_messages.append(("Feedback", shared_context["feedback"]))
-
-
-        # Check if the answer contains code
-        #if "```python" in formatted_answer:
-            # Add a note about code execution
-        #    formatted_answer += "\n\n> 💡 **Note**: This answer contains code. If you want to execute it, type 'execute!' in the chat."
-        #    return Response(content=formatted_answer)
-        #else:
-        #    return Response(content=formatted_answer)
-        return Response(content=formatted_answer)
 
 # --- Debug Info ---
 if st.session_state.debug:
@@ -1130,10 +860,10 @@ for message in st.session_state.messages:
 if user_input:
     # Show user input immediately
     st.session_state.messages.append({"role": "user", "content": user_input})
+    st.session_state.memory.add_user_message(user_input)
     with st.chat_message("user"):
         st.markdown(user_input)
 
-    st.session_state.memory.add_user_message(user_input)
     context = retrieve_context(user_input)
     
     # Count prompt tokens using tiktoken if needed
@@ -1149,41 +879,24 @@ if user_input:
         stream_box = st.empty()
         stream_handler = StreamHandler(stream_box)
         
-        # Initialization with streaming
-       
-        if st.session_state.mode_is_fast == "Fast Mode":
-
-            if st.session_state.selected_model in GEMINI_MODELS:
-
-
-                st.session_state.llm = ChatGoogleGenerativeAI(
-                        model=st.session_state.selected_model,
-                        #streaming=True,
-                        callbacks=[stream_handler],
-                        google_api_key=api_key_gai,
-                        temperature=0.2,
-                        convert_system_message_to_human=True  # Important for compatibility
-                )
-
-
-            else:
-                st.session_state.llm = ChatOpenAI(
-                        model_name=st.session_state.selected_model,
-                        streaming=True,
-                        callbacks=[stream_handler],
-                        openai_api_key=api_key,
-                        temperature=0.2
-                )
-
-
         # Check if this is an execution request
         if user_input.strip().lower() == "execute!" or user_input.strip().lower() == "plot!":
             response = call_code()
 
+        elif st.session_state.mode_is_fast == "Fast Mode":
+            """ Fast Mode """
+            content = []
+            llm_stream = fast_mode_stream(user_input, context, st.session_state.memory.messages, stream_handler)
+            for chunk in llm_stream:
+                content.append(chunk.content)  # or chunk if using token chunks
+
+            content = "".join(content)
+
+            response = Response(content=content)
+            st.markdown(response.content)
         else:
-            response = call_ai(context, user_input)
-            if st.session_state.mode_is_fast != "Fast Mode":
-                st.markdown(response.content)
+            """ Deep Thought Mode """
+            # TODO: Implement Deep Thought Mode
 
         st.session_state.memory.add_ai_message(response.content)
         st.session_state.messages.append({"role": "assistant", "content": response.content})
@@ -1228,6 +941,8 @@ if "llm_initialized" in st.session_state and st.session_state.llm_initialized an
             )
         
         # Generate the streaming welcome message
+        # TODO: Remove
+        Initial_Agent_Instructions = read_prompt_from_file("prompts/qiskit_instructions.txt") # Reuse or adapt qiskit_instructions
         messages = [
             SystemMessage(content=Initial_Agent_Instructions),
             HumanMessage(content="Please greet the user and briefly explain what you can do as the CLASS code assistant.")
