@@ -108,8 +108,6 @@ This project uses conda/mamba for environment management, which is compatible wi
 ## Project Structure
 
 * `CLAPP.py`: The main Streamlit application script.
-* `install_classy.sh`: Script to install CLASS from source.
-* `test_classy.py`: Script to test CLASS installation and functionality.
 * `environment.yml`: Conda environment specification with all required dependencies.
 * `class-data/`: Directory containing data for the RAG system (CLASS code, docs, etc.).
 * `prompts/`: Directory containing system prompts for the AI agents.
