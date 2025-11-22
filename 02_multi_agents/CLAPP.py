@@ -23,8 +23,6 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from workflows.fast import fast_mode_stream
 from tools.retrieval_tool import RetrievalTool
 
-import matplotlib
-matplotlib.use('Agg')  # Set the backend to Agg before importing pyplot
 
 # --- Helper Functions ---
 def save_encrypted_key(encrypted_key, username):
@@ -397,17 +395,6 @@ with st.sidebar:
     if st.session_state.last_token_count > 0:
         st.markdown(f"🧮 **Last response token usage:** `{st.session_state.last_token_count}` tokens")
 
-    # --- Display all saved plots in sidebar ---
-    if "generated_plots" in st.session_state and st.session_state.generated_plots:
-        with st.expander("📊 Plot Gallery", expanded=False):
-            st.write("All plots generated during this session:")
-            # Use a single column layout for the sidebar
-            for i, plot_path in enumerate(st.session_state.generated_plots):
-                if os.path.exists(plot_path):
-                    st.image(plot_path, width=250, caption=os.path.basename(plot_path))
-                    st.markdown("---")  # Add separator between plots
-
-
 
 # --- Chat Input ---
 if OPTIONS and st.session_state.vector_store:
@@ -430,19 +417,7 @@ else:
 # --- Display Full Chat History ---
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
-        # Check if this message contains a plot path marker
-        if "PLOT_PATH:" in message["content"]:
-            # Split content into text and plot path
-            parts = message["content"].split("PLOT_PATH:")
-            # Display the text part
-            st.markdown(parts[0])
-            # Display each plot path
-            for plot_info in parts[1:]:
-                plot_path = plot_info.split('\n')[0].strip()
-                if os.path.exists(plot_path):
-                    st.image(plot_path, width=700)
-        else:
-            st.markdown(message["content"])
+        st.markdown(message["content"])
 
 # --- Process New Prompt ---
 if user_input:
