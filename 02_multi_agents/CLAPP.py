@@ -153,26 +153,6 @@ def init_session():
 load_dotenv()
 init_session()
 
-# --- Debug Info ---
-if st.session_state.debug:
-    with st.sidebar.expander("🛠️ Debug Information", expanded=True):
-        # Create a container for debug messages
-        debug_container = st.container()
-        with debug_container:
-            st.markdown("### Debug Messages")
-            
-            # Display all debug messages in a scrollable container
-            for title, message in st.session_state.debug_messages:
-                st.markdown(f"### {title}")
-                st.markdown(message)
-                st.markdown("---")
-    
-    with st.sidebar.expander("🛠️ Context Used"):
-        if "context" in locals():
-            st.markdown(context)
-        else:
-            st.markdown("No context retrieved yet.")
-
 # --- Sidebar Configuration ---
 with st.sidebar:
     st.markdown('<div class="sidebar-title">🔐 API & Assistants</div>', unsafe_allow_html=True)
@@ -413,11 +393,6 @@ with st.sidebar:
     #         st.rerun()
     # 
     # st.markdown("---")  # Add a separator for better visual organization
-    st.markdown('<div class="sidebar-title">🐞 Debug Info and Logs</div>', unsafe_allow_html=True)
-    st.session_state.debug = st.checkbox("🔍 Show Debug Info")
-    if st.button("🗑️ Reset Chat"):
-        st.session_state.clear()
-        st.rerun()
 
     if st.session_state.last_token_count > 0:
         st.markdown(f"🧮 **Last response token usage:** `{st.session_state.last_token_count}` tokens")
