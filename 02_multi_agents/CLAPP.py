@@ -1,6 +1,3 @@
-# This script requires Streamlit and LangChain
-# Install it with: pip install streamlit openai langchain langchain-openai langchain-community
-
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 os.environ["TRANSFORMERS_CACHE"] = "/tmp/hf_cache"  # Optional: use a writable cache
@@ -23,21 +20,11 @@ from langchain_openai import OpenAIEmbeddings
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from autogen.agentchat import initiate_group_chat
-from autogen.agentchat.group.patterns import AutoPattern
-from autogen.agentchat.group import ContextVariables
 from workflows.fast import fast_mode_stream
 from tools.retrieval_tool import RetrievalTool
 
-from autogen.coding import LocalCommandLineCodeExecutor, CodeBlock
 import matplotlib
 matplotlib.use('Agg')  # Set the backend to Agg before importing pyplot
-import matplotlib.pyplot as plt
-import io
-import re
-import subprocess
-import sys
-import contextlib  # for contextlib.contextmanager
 
 # --- Helper Functions ---
 def save_encrypted_key(encrypted_key, username):
@@ -165,107 +152,6 @@ def init_session():
 
 load_dotenv()
 init_session()
-
-
-class PlotAwareExecutor(LocalCommandLineCodeExecutor):
-    def __init__(self, **kwargs):
-        import tempfile
-        # Create a persistent plots directory if it doesn't exist
-        plots_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'plots')
-        os.makedirs(plots_dir, exist_ok=True)
-        
-        # Still use a temp dir for code execution
-        temp_dir = tempfile.TemporaryDirectory()
-        kwargs['work_dir'] = temp_dir.name
-        super().__init__(**kwargs)
-        self._temp_dir = temp_dir
-        self._plots_dir = plots_dir
-
-    @contextlib.contextmanager
-    def _capture_output(self):
-        old_out, old_err = sys.stdout, sys.stderr
-        buf_out, buf_err = io.StringIO(), io.StringIO()
-        sys.stdout, sys.stderr = buf_out, buf_err
-        try:
-            yield buf_out, buf_err
-        finally:
-            sys.stdout, sys.stderr = old_out, old_err
-
-    def execute_code(self, code: str):
-        # 1) Extract code from markdown
-        match = re.search(r"```(?:python)?\n(.*?)```", code, re.DOTALL)
-        cleaned = match.group(1) if match else code
-        cleaned = cleaned.replace("plt.show()", "")
-        
-        # Add timestamp for saving figures only if there's plt usage in the code
-        timestamp = time.strftime("%Y-%m-%d-%H-%M-%S")
-        plot_filename = f'plot_{timestamp}.png'
-        plot_path = os.path.join(self._plots_dir, plot_filename)
-        temp_plot_path = None
-        
-        for line in cleaned.split("\n"):
-            if "plt.savefig" in line:
-                leading_spaces = line[:len(line) - len(line.lstrip())]  # get leading whitespace
-                temp_plot_path = os.path.join(self._temp_dir.name, f'temporary_{timestamp}.png')
-                new_line = f"{leading_spaces}plt.savefig('{temp_plot_path}', dpi=300)"
-                cleaned = cleaned.replace(line, new_line)
-                break
-                    #else:
-            # If there's a plot but no save, auto-insert save
-            #    if "plt." in cleaned:
-            #        temp_plot_path = os.path.join(self._temp_dir.name, f'temporary_{timestamp}.png')
-            #        cleaned += f"\nplt.savefig('{temp_plot_path}')"
-
-        # Create a temporary Python file to execute
-        temp_script_path = os.path.join(self._temp_dir.name, f'temp_script_{timestamp}.py')
-        with open(temp_script_path, 'w') as f:
-            f.write(cleaned)
-        
-        full_output = ""
-        try:
-            # 2) Capture stdout using subprocess
-            process = subprocess.Popen(
-                [sys.executable, temp_script_path],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1, 
-                cwd=self._temp_dir.name
-            )
-            stdout, _ = process.communicate()
-
-            # 3) Format the output
-            with self._capture_output() as (out_buf, err_buf):
-                if stdout:
-                    out_buf.write(stdout)
-                stdout_text = out_buf.getvalue()
-                stderr_text = err_buf.getvalue()
-
-            if stdout_text:
-                full_output += f"STDOUT:\n{stdout_text}\n"
-            if stderr_text:
-                full_output += f"STDERR:\n{stderr_text}\n"
-                
-            # Copy plot from temp to persistent location if it exists
-            if temp_plot_path and os.path.exists(temp_plot_path):
-                import shutil
-                shutil.copy2(temp_plot_path, plot_path)
-                # Initialize the plots list if it doesn't exist
-                if "generated_plots" not in st.session_state:
-                    st.session_state.generated_plots = []
-                # Add the persistent plot path to session state
-                st.session_state.generated_plots.append(plot_path)
-
-        except Exception:
-            with self._capture_output() as (out_buf, err_buf):
-                import traceback
-                traceback.print_exc(file=sys.stderr)
-                full_output += f"STDERR:\n{err_buf.getvalue()}\n"
-
-        return full_output, plot_path
-
-# Example instantiation:
-executor = PlotAwareExecutor(timeout=10)
 
 # --- Debug Info ---
 if st.session_state.debug:
