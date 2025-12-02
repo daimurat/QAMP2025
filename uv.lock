@@ -10,47 +10,6 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "02-multi-agents"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "datasets" },
-    { name = "faiss-cpu" },
-    { name = "langchain" },
-    { name = "langchain-community" },
-    { name = "langchain-core" },
-    { name = "langchain-google-genai" },
-    { name = "langchain-huggingface" },
-    { name = "langchain-openai" },
-    { name = "langchain-text-splitters" },
-    { name = "langsmith" },
-    { name = "openai" },
-    { name = "python-dotenv" },
-    { name = "qiskit" },
-    { name = "qiskit-aer" },
-    { name = "qiskit-ibm-runtime" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "datasets", specifier = ">=4.2.0" },
-    { name = "faiss-cpu", specifier = "==1.10.0" },
-    { name = "langchain", specifier = "==0.3.23" },
-    { name = "langchain-community", specifier = "==0.3.21" },
-    { name = "langchain-core", specifier = "==0.3.52" },
-    { name = "langchain-google-genai" },
-    { name = "langchain-huggingface" },
-    { name = "langchain-openai", specifier = "==0.3.13" },
-    { name = "langchain-text-splitters", specifier = "==0.3.8" },
-    { name = "langsmith", specifier = "==0.3.19" },
-    { name = "openai", specifier = ">=1.68.2" },
-    { name = "python-dotenv", specifier = ">=1.0.0" },
-    { name = "qiskit", specifier = ">=2.2.2" },
-    { name = "qiskit-aer", specifier = ">=0.17.2" },
-    { name = "qiskit-ibm-runtime", specifier = ">=0.43.0" },
-]
-
-[[package]]
 name = "aiohappyeyeballs"
 version = "2.6.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2451,6 +2410,47 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/1c/ca/a1cd95daf75d09d2dc1744cde95d5d18fed61a0e4922788fb916a7cd8152/qiskit_aer-0.17.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:2749e6027f67e1f6b9d328d2dda2d4bf926aebd3653edc62e94c45d8237294d8", size = 12376191, upload-time = "2025-09-17T13:54:38.092Z" },
     { url = "https://files.pythonhosted.org/packages/d6/69/e2f979e2fca054b0092fc52c46da050298513b9b03531305bc3f340c7669/qiskit_aer-0.17.2-cp313-cp313-win32.whl", hash = "sha256:c3ffd40a64bfcf8a6d10cbfdca8734d49ec57502fd70dc63aae9ed3819249dd6", size = 6922275, upload-time = "2025-09-17T13:54:40.024Z" },
     { url = "https://files.pythonhosted.org/packages/ae/91/195cb69d3af4359544939378879093764bd35d8abd7ac0de840bb5477d27/qiskit_aer-0.17.2-cp313-cp313-win_amd64.whl", hash = "sha256:b38c5dfdc6cb2bacac78a47b0df8247123051564007fdecedb8ffbd4256f0f09", size = 9563116, upload-time = "2025-09-17T13:54:42.061Z" },
+]
+
+[[package]]
+name = "qiskit-code-agent"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "datasets" },
+    { name = "faiss-cpu" },
+    { name = "langchain" },
+    { name = "langchain-community" },
+    { name = "langchain-core" },
+    { name = "langchain-google-genai" },
+    { name = "langchain-huggingface" },
+    { name = "langchain-openai" },
+    { name = "langchain-text-splitters" },
+    { name = "langsmith" },
+    { name = "openai" },
+    { name = "python-dotenv" },
+    { name = "qiskit" },
+    { name = "qiskit-aer" },
+    { name = "qiskit-ibm-runtime" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "datasets", specifier = ">=4.2.0" },
+    { name = "faiss-cpu", specifier = "==1.10.0" },
+    { name = "langchain", specifier = "==0.3.23" },
+    { name = "langchain-community", specifier = "==0.3.21" },
+    { name = "langchain-core", specifier = "==0.3.52" },
+    { name = "langchain-google-genai" },
+    { name = "langchain-huggingface" },
+    { name = "langchain-openai", specifier = "==0.3.13" },
+    { name = "langchain-text-splitters", specifier = "==0.3.8" },
+    { name = "langsmith", specifier = "==0.3.19" },
+    { name = "openai", specifier = ">=1.68.2" },
+    { name = "python-dotenv", specifier = ">=1.0.0" },
+    { name = "qiskit", specifier = ">=2.2.2" },
+    { name = "qiskit-aer", specifier = ">=0.17.2" },
+    { name = "qiskit-ibm-runtime", specifier = ">=0.43.0" },
 ]
 
 [[package]]
