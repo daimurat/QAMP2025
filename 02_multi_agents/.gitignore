@@ -178,3 +178,4 @@ cython_debug/
 # vector db index
 my_faiss_index/
 plots/
+out/
