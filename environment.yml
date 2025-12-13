@@ -187,4 +187,4 @@ dependencies:
       - zstandard==0.23.0
       - torch
       - sentence-transformers
-prefix: /home/santiago/miniforge3/envs/py310
+      - qiskit==1.4.5

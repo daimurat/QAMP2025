@@ -1,158 +1,134 @@
-from typing import Annotated
-from autogen import ConversableAgent, LLMConfig, UpdateSystemMessage
-from autogen.agentchat import initiate_group_chat
-from autogen.agentchat.group.patterns import AutoPattern
-from autogen.agentchat.group import ReplyResult, AgentNameTarget
-from autogen.agentchat.group import AgentTarget, TerminateTarget
-from autogen.agentchat.group import ContextVariables
-from autogen.agentchat.group import OnCondition, StringLLMCondition
+import os
+import re
+from autogen import AssistantAgent, LLMConfig, UserProxyAgent
 
-def _read_prompt_from_file(path):
-    with open(path, 'r') as f:
-        return f.read()
-
-def review_reply(
-    feedback: Annotated[str,"Feedback on improving this reply to be accurate and relavant for the user prompt"], 
-    rating: Annotated[int,"The rating of the reply on a scale of 1 to 10"], 
-    context_variables: ContextVariables
-) -> ReplyResult:
-    """Review the reply of the Ai Agent to the user prompt with respect to correctness, clarity and relevance for the user prompt"""
-    context_variables["feedback"] = feedback
-    context_variables["rating"] = rating
-    context_variables["revisions"] += 1
-
+def extract_qiskit_code_from_chat(user_proxy, assistant):
+    """
+    Extract Qiskit code from the entire conversation history.
     
-    messages = list(st.session_state.agents['qiskit_agent'].chat_messages.values())[0]
-
-
-    #st.markdown(messages[-2])
-    reply = None
-    for item in messages:
-        if item['name'] == 'qiskit_agent' or item['name'] == 'improve_reply_agent':
-            reply = item["content"]
-       
-    if reply:
-        context_variables["last_answer"] = reply
+    Args:
+        user_proxy: UserProxyAgent instance
+        assistant: AssistantAgent instance
     
-    if rating < 8 and context_variables["revisions"] < 3:
-        return ReplyResult(
-            context_variables=context_variables,
-            target=AgentNameTarget("improve_reply_agent"),
-            message=f'Please revise the answer considering this feedback {feedback}',
-        )
-
-    elif rating >= 8:
-        #st.markdown("Formatting final answer...")
-        return ReplyResult(
-            context_variables=context_variables,
-            target=AgentNameTarget("improve_reply_agent_final"),
-            message=f'The answer is already of sufficient quality. Focus on formatting the reply',
-        )
+    Returns:
+        str: Extracted Qiskit code (longest one if multiple blocks exist)
+    """
+    # Get conversation history
+    chat_messages = user_proxy.chat_messages.get(assistant, [])
+    
+    code_blocks = []
+    
+    for message in chat_messages:
+        content = message.get("content", "")
         
-    else:
-        return ReplyResult(
-            context_variables=context_variables,
-            target=AgentNameTarget("improve_reply_agent_final"),
-            message=f'Please revise the answer considering this feedback {feedback}',
-        )
+        # Extract Markdown code blocks (```python ... ```)
+        python_blocks = re.findall(r'```python\n(.*?)```', content, re.DOTALL)
+        code_blocks.extend(python_blocks)
+        
+        # Also detect code blocks without backticks
+        if not python_blocks:
+            # Look for lines containing "from qiskit" or "import qiskit"
+            if 'qiskit' in content.lower():
+                code_blocks.append(content)
+    
+    # Filter to only blocks containing Qiskit code
+    qiskit_codes = [
+        code for code in code_blocks
+        if 'qiskit' in code.lower() or 'QuantumCircuit' in code
+    ]
+    
+    if qiskit_codes:
+        # Return the longest code block (usually the most complete code)
+        return f"```python\n{max(qiskit_codes, key=len)}\n```"
+    
+    # Fallback: return the last message
+    last_msg = assistant.last_message()
+    if last_msg:
+        return last_msg["content"]
+    
+    return "No Qiskit code found in conversation."
 
+def run_deep_thought_mode(user_input: str):
+    config_list = {
+        "api_type": "openai",
+        "model": "gpt-4.1-mini",
+        "api_key": os.getenv("OPENAI_API_KEY")
+    }
 
-def deep_thought_mode(user_input: str, context: str, message_history):
-    # 1. Load Config
-    Initial_Agent_Instructions = _read_prompt_from_file("prompts/qiskit_instructions.txt") # Reuse or adapt qiskit_instructions
-    Refine_Agent_Instructions = _read_prompt_from_file("prompts/qiskit_refinement.txt") # Instructions on imporving an answer
-    Review_Agent_Instructions = _read_prompt_from_file("prompts/review_instructions.txt") # Adapt rating_instructions
-    Formatting_Agent_Instructions = _read_prompt_from_file("prompts/formatting_instructions.txt") # New prompt file
-    Code_Execution_Agent_Instructions = _read_prompt_from_file("prompts/codeexecutor_instructions.txt") # New prompt file
+    llm_config = LLMConfig(config_list=config_list)
 
-    common_config = LLMConfig.from_json(path="config/common_llm_config.json")
-    review_config =LLMConfig.from_json(path="config/review_llm_config.json")
-
-    # 2. Define agents
-    qiskit_agent = ConversableAgent(
-        name="qiskit_agent",
-        system_message=Initial_Agent_Instructions,
-        description="Initial agent that answers user prompt. Expert in the qiskit code",
+    planner = AssistantAgent(
+        name="planner",
+        description="Design quantum circuit, plan valification strategy, and determine acceptance criteria",
+        llm_config=llm_config,
+        # the default system message of the AssistantAgent is overwritten here
+        system_message="You are a helpful AI assistant. You suggest coding and reasoning steps for another AI assistant to accomplish a task. Do not suggest concrete code. For any action beyond writing code or reasoning, convert it to a step that can be implemented by writing code. For example, browsing the web can be implemented by writing code that reads and prints the content of a web page. Finally, inspect the execution result. If the plan is not good, suggest a better plan. If the execution is wrong, analyze the error and suggest a fix.",
+    )
+    planner_user =  UserProxyAgent(
+        name="planner_user",
+        max_consecutive_auto_reply=0,  # terminate without auto-reply
         human_input_mode="NEVER",
-        llm_config=common_config
-    )
-    review_agent = ConversableAgent(
-        name="review_agent",
-        update_agent_state_before_reply=[
-            UpdateSystemMessage(Review_Agent_Instructions),
-        ],
-        human_input_mode="NEVER",
-        description="Reviews the AI answer to user prompt",
-        llm_config=review_config,
-        functions=review_reply,
-    )
-    refine_agent = ConversableAgent(
-        name="improve_reply_agent",
-        update_agent_state_before_reply=[
-            UpdateSystemMessage(Refine_Agent_Instructions),
-        ],
-        human_input_mode="NEVER",
-        description="Improves the AI reply by taking into account the feedback",
-        llm_config=common_config,
-    )
-    refine_agent_final = ConversableAgent(
-        name="improve_reply_agent_final",
-        update_agent_state_before_reply=[
-            UpdateSystemMessage(Refine_Agent_Instructions),
-        ],
-        human_input_mode="NEVER",
-        description="Improves the AI reply by taking into account the feedback",
-        llm_config=common_config,
+        code_execution_config={
+            "use_docker": False
+        },
     )
 
-    # 3. Define initial contexts
-    shared_context = ContextVariables(data =  {
-        "last_answer": "see chat history",
-        "feedback": "see chat history",
-        "rating": 0,
-        "revisions": 0,
-    })
+    def ask_planner(message):
+        """Ask planner agent for guidance (planner_user agent -> planner agent)"""
+        planner_user.initiate_chat(planner, message=message)
+        # Return the last message received from the planner
+        last_msg = planner_user.last_message()
+        if last_msg is None:
+            return "No response from planner."
+        return last_msg["content"]
 
-    # 3. Define Patterns
-    qiskit_agent.handoffs.set_after_work(AgentTarget(review_agent))
-    review_agent.handoffs.set_after_work(AgentTarget(refine_agent))
-    refine_agent.handoffs.set_after_work(AgentTarget(review_agent))
-    refine_agent_final.handoffs.set_after_work(TerminateTarget())
-    refine_agent.handoffs.add_llm_conditions([
-        OnCondition(target=AgentTarget(refine_agent_final), condition=StringLLMCondition(prompt="The reply to the latest user question has been reviewd and received a favarable rating (equivalent to 7 or higher)"))
-    ])
-
-    pattern = AutoPattern(
-        initial_agent=qiskit_agent,
-        agents=[qiskit_agent, review_agent, refine_agent, refine_agent_final],
-        group_manager_args={"llm_config": common_config},
-        context_variables=shared_context,
+    # create an AssistantAgent instance named "assistant"
+    assistant = AssistantAgent(
+        name="assistant",
+        description="Generate quantum circuit",
+        llm_config={
+            "temperature": 0,
+            "timeout": 600,
+            "cache_seed": 42,
+            "config_list": config_list,
+            "functions": [
+                {
+                    "name": "ask_planner",
+                    "description": "ask planner to: 1. get a plan for finishing a task, 2. verify the execution result of the plan and potentially suggest new plan.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "message": {
+                                "type": "string",
+                                "description": "question to ask planner. Make sure the question include enough context, such as the code and the execution result. The planner does not know the conversation between you and the user, unless you share the conversation with the planner.",
+                            },
+                        },
+                        "required": ["message"],
+                    },
+                },
+            ],
+        },
     )
 
-    # 5. Run group chat
-    result, context_variables, last_agent = initiate_group_chat(
-        pattern=pattern,
-        messages=f"Context from documents: {context}\n\nConversation history:\n{message_history}\n\nUser question: {user_input}",
-        max_rounds=10,
+    # create a UserProxyAgent instance named "user_proxy"
+    user_proxy = UserProxyAgent(
+        name="user_proxy",
+        description="Execute and debug quantum circuit",
+        human_input_mode="NEVER", # Never provide human feedback
+        max_consecutive_auto_reply=10,
+        code_execution_config={
+            "work_dir": "planning",
+            "use_docker": False,
+        }, 
+        function_map={"ask_planner": ask_planner},
     )
-    formatted_answer = None  # default to nothing
 
-    # 1. If the formatting agent gave the last reply, use that
-    if last_agent == refine_agent_final or last_agent == refine_agent:
-        formatted_answer = result.chat_history[-1]["content"]
+    # The assistant receives a message from the user, which contains the task description
+    user_proxy.initiate_chat(
+        assistant,
+        message=user_input,
+    )
 
-    # 2. Otherwise, use shared_context["last_answer"] if it's non-empty
-    if not formatted_answer and shared_context.get("last_answer"):
-        formatted_answer = shared_context["last_answer"]
-                
-    # 3. Otherwise, fall back to the initial agent's last message
-
-    if not formatted_answer:
-        try:
-            for item in result.chat_history:
-                if item['name'] == 'qiskit_agent' or item['name'] == 'imporve_reply_agent':
-                    formatted_answer = item["content"]
-        except:
-            formatted_answer = 'failed to load chat history'
-
-    return formatted_answer
+    # Extract Qiskit code from the entire conversation history
+    qiskit_code = extract_qiskit_code_from_chat(user_proxy, assistant)
+    return qiskit_code

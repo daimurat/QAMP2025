@@ -3,6 +3,7 @@ Chat Interface Component
 """
 import streamlit as st
 from utils.helpers import Response
+from workflows.deep_thought import run_deep_thought_mode
 from workflows.fast import run_fast_mode
 from config.constants import RESPONSE_MODES
 
@@ -64,11 +65,11 @@ def _process_user_input(user_input: str):
         if mode == RESPONSE_MODES["FAST"]:
             # run fast mode
             result = run_fast_mode(user_input, st.session_state.vector_store)
-            result_content =result[-1].get("content")
-            response = Response(content=result_content)
+            response = Response(content=result)
         if mode == RESPONSE_MODES["DEEP"]:
             # TODO: Implement Deep Thought Mode
-            st.warning("Deep Thought Mode is not yet implemented. Using Fast Mode instead.")
+            result = run_deep_thought_mode(user_input)
+            response = Response(content=result)
 
         st.markdown(response.content)
         
