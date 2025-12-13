@@ -35,4 +35,6 @@ def run_fast_mode(user_input: str, vector_store):
     )
 
     response.process()
-    return response.messages
+    
+    messages_list = list(response.messages)
+    return messages_list[-1].get("content")
