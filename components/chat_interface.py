@@ -2,9 +2,8 @@
 Chat Interface Component
 """
 import streamlit as st
-from utils.helpers import Response, StreamHandler
-from tools.retrieval_tool import RetrievalTool
-from workflows.fast import fast_mode_stream
+from utils.helpers import Response
+from workflows.fast import run_fast_mode
 from config.constants import RESPONSE_MODES
 
 
@@ -53,16 +52,25 @@ def _process_user_input(user_input: str):
     with st.chat_message("user"):
         st.markdown(user_input)
     
-    # retrieve context
-    retrieval_tool = RetrievalTool(vector_store=st.session_state.vector_store)
-    context = retrieval_tool.retrieve(user_input)
-    
     # count tokens
     _count_tokens(user_input)
     
     # generate assistant response
     with st.chat_message("assistant"):
-        response = _generate_response(user_input, context)
+        response:Response = None
+        
+        # check generation mode
+        mode = st.session_state.get("mode_is_fast", RESPONSE_MODES["FAST"])
+        if mode == RESPONSE_MODES["FAST"]:
+            # run fast mode
+            result = run_fast_mode(user_input, st.session_state.vector_store)
+            result_content =result[-1].get("content")
+            response = Response(content=result_content)
+        if mode == RESPONSE_MODES["DEEP"]:
+            # TODO: Implement Deep Thought Mode
+            st.warning("Deep Thought Mode is not yet implemented. Using Fast Mode instead.")
+
+        st.markdown(response.content)
         
         st.session_state.memory.add_ai_message(response.content)
         st.session_state.messages.append({"role": "assistant", "content": response.content})
@@ -79,37 +87,3 @@ def _count_tokens(text: str):
         st.session_state.last_token_count = len(enc.encode(text))
     except:
         st.session_state.last_token_count = 0
-
-
-def _generate_response(user_input: str, context: str) -> Response:
-    mode = st.session_state.get("mode_is_fast", RESPONSE_MODES["FAST"])
-    
-    response = None
-    if mode == RESPONSE_MODES["FAST"]:
-        response = _generate_fast_mode_response(user_input, context)
-    if mode == RESPONSE_MODES["DEEP"]:
-        # TODO: Implement Deep Thought Mode
-        st.warning("Deep Thought Mode is not yet implemented. Using Fast Mode instead.")
-    return response
-
-
-def _generate_fast_mode_response(user_input: str, context: str) -> Response:
-    stream_box = st.empty()
-    stream_handler = StreamHandler(stream_box)
-    
-    content = []
-    llm_stream = fast_mode_stream(
-        user_input, 
-        context, 
-        st.session_state.memory.messages, 
-        stream_handler
-    )
-    
-    for chunk in llm_stream:
-        content.append(chunk.content)
-    
-    full_content = "".join(content)
-    response = Response(content=full_content)
-    st.markdown(response.content)
-    
-    return response
