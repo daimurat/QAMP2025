@@ -45,8 +45,5 @@ def render_header():
         '<div class="main-title">qiskit Agent for Pair Programming</div>', 
         unsafe_allow_html=True
     )
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.image("images/CLAPP.png", width=400)
 
 # Made with Bob
