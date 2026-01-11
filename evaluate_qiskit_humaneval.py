@@ -22,6 +22,8 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_core.messages import SystemMessage, HumanMessage
 
+from workflows.deep_thought import run_deep_thought_mode
+
 # ----------------------------
 # CLI & defaults
 # ----------------------------
@@ -67,7 +69,6 @@ class Result:
     entry_point: str
     passed: bool
     error: Optional[str]
-    gen_tokens: Optional[int]
     prompt_chars: int
     completion_chars: int
     latency_s: float
@@ -148,53 +149,6 @@ def extract_code_only(text: str) -> str:
     """
     m = CODE_BLOCK_RE.search(text)
     return m.group(1).strip() if m else text.strip()
-
-# ----------------------------
-# LLM call
-# ----------------------------
-def call_llm(
-    llm: ChatOpenAI,
-    prompt: str,
-    context: str = "",
-) -> Tuple[str, Optional[int], float]:
-    """
-    Call LLM to generate code. Returns (text, output_token_count|None, latency).
-    """
-    # Build user message
-    if context:
-        user_content = f"""Context from Qiskit documentation:
-{context}
-
-Task:
-{prompt}{USER_SUFFIX}"""
-    else:
-        user_content = f"{prompt}{USER_SUFFIX}"
-    
-    messages = [
-        SystemMessage(content=SYSTEM_INSTRUCTIONS),
-        HumanMessage(content=user_content),
-    ]
-    
-    t0 = time.time()
-    try:
-        response = llm.invoke(messages)
-        latency = time.time() - t0
-        # Handle response content (can be string or list)
-        if isinstance(response.content, str):
-            text = response.content.strip()
-        else:
-            text = str(response.content).strip()
-        
-        # Try to get token count
-        output_tokens = None
-        if hasattr(response, "response_metadata"):
-            usage = response.response_metadata.get("token_usage", {})
-            output_tokens = usage.get("completion_tokens")
-        
-        return text, output_tokens, latency
-    except Exception as e:
-        latency = time.time() - t0
-        raise RuntimeError(f"LLM API error: {e}") from e
 
 # ----------------------------
 # Execution harness
@@ -316,24 +270,11 @@ def evaluate(args: argparse.Namespace) -> None:
             latency = 0.0
             print("  (dry-run) Loaded cached completion.")
         else:
-            # Retrieve context if RAG enabled
-            context = ""
-            if args.use_rag and vector_store:
-                print("  Retrieving context...")
-                context = retrieve_context(vector_store, t.prompt, top_k=args.rag_top_k)
-                print(f"  Retrieved {len(context)} chars of context")
-
-            # Generate code
             try:
-                print("  Generating code...")
-                raw_text, output_tokens, latency = call_llm(
-                    llm=llm,
-                    prompt=t.prompt,
-                    context=context,
-                )
+                raw_text,latency = run_deep_thought_mode(t.prompt)
             except RuntimeError as e:
                 print(f"  LLM error: {e}")
-                raw_text, output_tokens, latency = "", None, 0.0
+                raw_text, latency = "", 0.0
 
             completion_text = extract_code_only(raw_text)
             gen_path.write_text(completion_text, encoding="utf-8")
@@ -359,7 +300,6 @@ def evaluate(args: argparse.Namespace) -> None:
             entry_point=t.entry_point,
             passed=passed,
             error=err,
-            gen_tokens=output_tokens,
             prompt_chars=len(t.prompt),
             completion_chars=len(completion_text),
             latency_s=latency,
