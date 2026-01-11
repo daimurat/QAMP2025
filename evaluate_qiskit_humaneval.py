@@ -25,6 +25,7 @@ import argparse
 import csv
 import datetime as dt
 import json
+import logging
 import os
 import re
 import subprocess
@@ -66,9 +67,13 @@ def build_cli() -> argparse.Namespace:
     p.add_argument("--use-rag", action="store_true", default=True, help="Use RAG for context retrieval.")
     p.add_argument("--no-rag", dest="use_rag", action="store_false", help="Disable RAG.")
     p.add_argument("--rag-top-k", type=int, default=5, help="Number of documents to retrieve for RAG.")
+    p.add_argument("--rag-min-score", type=float, default=0.0,
+                   help="Minimum similarity score for RAG chunks (0.0-1.0). Chunks below this are discarded.")
     p.add_argument("--db-path", default="QAMP/data/qamp.db", help="Path to SQLite vector database.")
+    p.add_argument("--task-id", default=None,
+                   help="Run only a specific task by ID (e.g., '47' or 'qiskitHumanEval/47').")
     p.add_argument("--difficulty", default=None,
-                   choices=["basic", "intermediate", "advanced"],
+                   choices=["basic", "intermediate", "difficult"],
                    help="Filter tasks by difficulty level.")
     p.add_argument("--outdir", default="out", help="Directory to write logs/artifacts.")
     p.add_argument("--dry-run", action="store_true", help="Skip model calls and reuse previous generations if present.")
@@ -100,6 +105,7 @@ class Result:
     model: str
     file_path: str
     rag_used: bool
+    rag_chunks_used: int
 
 # ----------------------------
 # Utility: file safe writing
@@ -259,10 +265,21 @@ def run_in_subprocess(code: str, timeout_sec: int) -> Tuple[bool, Optional[str]]
 # ----------------------------
 # Main evaluation loop
 # ----------------------------
-def load_tasks(dataset: str, split: str, limit: Optional[int], difficulty: Optional[str] = None) -> List[Task]:
+def load_tasks(dataset: str, split: str, limit: Optional[int], difficulty: Optional[str] = None, task_id: Optional[str] = None) -> List[Task]:
     ds = load_dataset(dataset, split=split)
     tasks: List[Task] = []
     for i, row in enumerate(ds):
+        row_task_id = row.get("task_id", f"{i}")
+        
+        # Filter by task_id if specified (supports "47" or "qiskitHumanEval/47")
+        if task_id is not None:
+            # Normalize: if task_id is just a number, match the suffix
+            if task_id.isdigit():
+                if not row_task_id.endswith(f"/{task_id}"):
+                    continue
+            elif row_task_id != task_id:
+                continue
+        
         # Filter by difficulty if specified
         if difficulty is not None:
             task_difficulty = row.get("difficulty_scale", "").lower()
@@ -273,7 +290,7 @@ def load_tasks(dataset: str, split: str, limit: Optional[int], difficulty: Optio
             break
         tasks.append(Task(
             idx=len(tasks),
-            task_id=row.get("task_id", f"{i}"),
+            task_id=row_task_id,
             entry_point=row["entry_point"],
             prompt=row["prompt"],
             test=row["test"],
@@ -287,6 +304,14 @@ def evaluate(args: argparse.Namespace) -> None:
     out_root = Path(args.outdir) / f"{Path(args.dataset).name}_{run_ts}_{args.model.replace('/', '_')}{rag_suffix}"
     gens_dir = out_root / "generations"
     ensure_dir(gens_dir)
+
+    # Setup RAG debug logger (writes to file, not console)
+    rag_logger = logging.getLogger("rag_debug")
+    rag_logger.setLevel(logging.DEBUG)
+    rag_logger.propagate = False  # Don't print to console
+    rag_handler = logging.FileHandler(out_root / "rag_debug.log", mode="w", encoding="utf-8")
+    rag_handler.setFormatter(logging.Formatter("%(message)s"))
+    rag_logger.addHandler(rag_handler)
 
     # Initialize Groq client
     client = Groq()
@@ -303,10 +328,12 @@ def evaluate(args: argparse.Namespace) -> None:
             args.use_rag = False
 
     # Load tasks
-    tasks = load_tasks(args.dataset, args.split, args.max_items, args.difficulty)
+    tasks = load_tasks(args.dataset, args.split, args.max_items, args.difficulty, args.task_id)
     difficulty_str = f" (difficulty: {args.difficulty})" if args.difficulty else ""
     print(f"✓ Loaded {len(tasks)} tasks from {args.dataset}:{args.split}{difficulty_str}")
     print(f"✓ RAG: {'enabled' if args.use_rag else 'disabled'}")
+    if args.use_rag:
+        print(f"✓ RAG debug log: {out_root / 'rag_debug.log'}")
     print(f"✓ Output directory: {out_root}\n")
 
     results: List[Result] = []
@@ -316,6 +343,7 @@ def evaluate(args: argparse.Namespace) -> None:
         gen_path = gens_dir / f"{t.idx:03d}_{t.entry_point}.py"
 
         # 1) Get / reuse generation
+        chunks_used = 0  # Track how many RAG chunks were used
         if args.dry_run and gen_path.exists():
             completion_text = gen_path.read_text(encoding="utf-8")
             output_tokens = None
@@ -324,10 +352,32 @@ def evaluate(args: argparse.Namespace) -> None:
         else:
             # Retrieve context if RAG enabled
             context = ""
+            chunks_used = 0
             if args.use_rag and retriever:
                 print("  Retrieving context...")
-                context = retriever.retrieve_context(t.prompt, top_k=args.rag_top_k)
-                print(f"  Retrieved {len(context)} chars of context")
+                # Use retrieve() to get scores, then build context
+                all_chunks = retriever.retrieve(t.prompt, top_k=args.rag_top_k)
+                
+                # Filter by minimum score
+                chunks = [c for c in all_chunks if c["score"] >= args.rag_min_score]
+                chunks_used = len(chunks)
+                context = "\n\n".join(chunk["text"] for chunk in chunks)
+                
+                print(f"  Retrieved {len(all_chunks)} chunks, {chunks_used} passed min_score={args.rag_min_score} ({len(context)} chars)")
+                
+                # Log RAG details to file
+                rag_logger.debug(f"\n{'='*80}")
+                rag_logger.debug(f"Task: {t.task_id} ({t.entry_point})")
+                rag_logger.debug(f"Query (prompt): {t.prompt[:500]}..." if len(t.prompt) > 500 else f"Query (prompt): {t.prompt}")
+                rag_logger.debug(f"\nRetrieved {len(all_chunks)} chunks, {chunks_used} passed min_score={args.rag_min_score}:")
+                for i, chunk in enumerate(all_chunks):
+                    used = chunk["score"] >= args.rag_min_score
+                    used_marker = "[USED]" if used else "[FILTERED OUT]"
+                    rag_logger.debug(f"\n--- Chunk {i+1} (score: {chunk['score']:.4f}) {used_marker} ---")
+                    rag_logger.debug(f"Source: {chunk.get('source', 'N/A')}")
+                    rag_logger.debug(f"URL: {chunk.get('url', 'N/A')}")
+                    rag_logger.debug(f"Text preview: {chunk['text'][:300]}..." if len(chunk['text']) > 300 else f"Text: {chunk['text']}")
+                rag_logger.debug(f"\nTotal context length: {len(context)} chars, chunks used: {chunks_used}/{len(all_chunks)}")
 
             # Generate code
             try:
@@ -376,6 +426,7 @@ def evaluate(args: argparse.Namespace) -> None:
             model=args.model,
             file_path=str(gen_path),
             rag_used=args.use_rag,
+            rag_chunks_used=chunks_used,
         )
         results.append(res)
         status = "✓ PASS" if passed else f"✗ FAIL"
@@ -426,6 +477,8 @@ def evaluate(args: argparse.Namespace) -> None:
     print(f"\n✓ Artifacts written to: {out_root}")
     print(f"✓ Results CSV: {csv_path}")
     print(f"✓ Summary JSON: {out_root / 'summary.json'}")
+    if args.use_rag:
+        print(f"✓ RAG debug log: {out_root / 'rag_debug.log'}")
 
 if __name__ == "__main__":
     load_dotenv()

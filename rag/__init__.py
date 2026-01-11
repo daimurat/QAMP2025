@@ -1,5 +1,5 @@
 """
-Unified RAG module for Qiskit documentation retrieval.
+RAG module for Qiskit documentation retrieval.
 
 Uses SQLite vector database with Gemini embeddings.
 """
