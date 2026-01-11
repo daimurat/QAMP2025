@@ -1,25 +1,3 @@
-#!/usr/bin/env python3
-"""
-Evaluate an OpenAI model on the QiskitHumanEval benchmark with RAG support.
-
-This script integrates CLAPP's RAG backend with the QiskitHumanEval evaluation framework.
-- Loads tasks from Hugging Face: Qiskit/qiskit_humaneval (default) or qiskit_humaneval_hard
-- Uses RAG to retrieve relevant Qiskit documentation for context
-- For each task:
-  * Retrieves context from vector store (if RAG enabled)
-  * Sends the prompt with context to the model
-  * Combines the original prompt, the model completion, and the dataset's test code
-  * Executes tests in an isolated subprocess with a timeout
-- Produces pass@1, a CSV of per-task outcomes, and saves raw generations.
-
-⚠️ This executes LLM-generated Python. Run only in an isolated, throwaway environment.
-
-References:
-- Dataset: https://huggingface.co/datasets/Qiskit/qiskit_humaneval
-- Paper: "Qiskit HumanEval" (arXiv:2406.14712): https://arxiv.org/abs/2406.14712
-- CLAPP: Multi-agent system with RAG for Qiskit code generation
-"""
-
 from __future__ import annotations
 import argparse
 import csv
