@@ -1,5 +1,6 @@
 import os
 import re
+import time
 from autogen import AssistantAgent, LLMConfig, UserProxyAgent
 
 def extract_qiskit_code_from_chat(user_proxy, assistant):
@@ -119,16 +120,22 @@ def run_deep_thought_mode(user_input: str):
         code_execution_config={
             "work_dir": "planning",
             "use_docker": False,
-        }, 
+        },
         function_map={"ask_planner": ask_planner},
     )
 
+    # Start timing
+    start_time = time.time()
+    
     # The assistant receives a message from the user, which contains the task description
     user_proxy.initiate_chat(
         assistant,
         message=user_input,
     )
+    
+    # Calculate elapsed time
+    latency = time.time() - start_time
 
     # Extract Qiskit code from the entire conversation history
     qiskit_code = extract_qiskit_code_from_chat(user_proxy, assistant)
-    return qiskit_code
+    return qiskit_code, latency
