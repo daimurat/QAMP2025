@@ -1,141 +1,123 @@
-import os
-import re
 import time
-from autogen import AssistantAgent, LLMConfig, UserProxyAgent
-
-def extract_qiskit_code_from_chat(user_proxy, assistant):
-    """
-    Extract Qiskit code from the entire conversation history.
-    
-    Args:
-        user_proxy: UserProxyAgent instance
-        assistant: AssistantAgent instance
-    
-    Returns:
-        str: Extracted Qiskit code (longest one if multiple blocks exist)
-    """
-    # Get conversation history
-    chat_messages = user_proxy.chat_messages.get(assistant, [])
-    
-    code_blocks = []
-    
-    for message in chat_messages:
-        content = message.get("content", "")
-        
-        # Extract Markdown code blocks (```python ... ```)
-        python_blocks = re.findall(r'```python\n(.*?)```', content, re.DOTALL)
-        code_blocks.extend(python_blocks)
-        
-        # Also detect code blocks without backticks
-        if not python_blocks:
-            # Look for lines containing "from qiskit" or "import qiskit"
-            if 'qiskit' in content.lower():
-                code_blocks.append(content)
-    
-    # Filter to only blocks containing Qiskit code
-    qiskit_codes = [
-        code for code in code_blocks
-        if 'qiskit' in code.lower() or 'QuantumCircuit' in code
-    ]
-    
-    if qiskit_codes:
-        # Return the longest code block (usually the most complete code)
-        return f"```python\n{max(qiskit_codes, key=len)}\n```"
-    
-    # Fallback: return the last message
-    last_msg = assistant.last_message()
-    if last_msg:
-        return last_msg["content"]
-    
-    return "No Qiskit code found in conversation."
+from agents import create_assistant_agent, create_user_proxy_agent
 
 def run_deep_thought_mode(user_input: str):
-    config_list = {
-        "api_type": "openai",
-        "model": "gpt-4.1-mini",
-        "api_key": os.getenv("OPENAI_API_KEY")
-    }
-
-    llm_config = LLMConfig(config_list=config_list)
-
-    planner = AssistantAgent(
-        name="planner",
-        description="Design quantum circuit, plan valification strategy, and determine acceptance criteria",
-        llm_config=llm_config,
-        # the default system message of the AssistantAgent is overwritten here
-        system_message="You are a helpful AI assistant. You suggest coding and reasoning steps for another AI assistant to accomplish a task. Do not suggest concrete code. For any action beyond writing code or reasoning, convert it to a step that can be implemented by writing code. For example, browsing the web can be implemented by writing code that reads and prints the content of a web page. Finally, inspect the execution result. If the plan is not good, suggest a better plan. If the execution is wrong, analyze the error and suggest a fix.",
-    )
-    planner_user =  UserProxyAgent(
-        name="planner_user",
-        max_consecutive_auto_reply=0,  # terminate without auto-reply
-        human_input_mode="NEVER",
-        code_execution_config={
-            "use_docker": False
-        },
-    )
-
-    def ask_planner(message):
-        """Ask planner agent for guidance (planner_user agent -> planner agent)"""
-        planner_user.initiate_chat(planner, message=message)
-        # Return the last message received from the planner
-        last_msg = planner_user.last_message()
-        if last_msg is None:
-            return "No response from planner."
-        return last_msg["content"]
-
-    # create an AssistantAgent instance named "assistant"
-    assistant = AssistantAgent(
-        name="assistant",
-        description="Generate quantum circuit",
-        llm_config={
-            "temperature": 0,
-            "timeout": 600,
-            "cache_seed": 42,
-            "config_list": config_list,
-            "functions": [
-                {
-                    "name": "ask_planner",
-                    "description": "ask planner to: 1. get a plan for finishing a task, 2. verify the execution result of the plan and potentially suggest new plan.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "message": {
-                                "type": "string",
-                                "description": "question to ask planner. Make sure the question include enough context, such as the code and the execution result. The planner does not know the conversation between you and the user, unless you share the conversation with the planner.",
-                            },
-                        },
-                        "required": ["message"],
-                    },
-                },
-            ],
-        },
-    )
-
-    # create a UserProxyAgent instance named "user_proxy"
-    user_proxy = UserProxyAgent(
-        name="user_proxy",
-        description="Execute and debug quantum circuit",
-        human_input_mode="NEVER", # Never provide human feedback
-        max_consecutive_auto_reply=10,
-        code_execution_config={
-            "work_dir": "planning",
-            "use_docker": False,
-        },
-        function_map={"ask_planner": ask_planner},
-    )
-
+    """
+    Run the deep thought mode with improved agent topology.
+    
+    Agent Topology:
+    1. PlannerAgent: Receives user input, analyzes requirements, and creates implementation plan
+    2. QiskitDeveloper: Receives plan from Planner, generates Qiskit code
+    3. execute_code function: Executes code and returns results (called by QiskitDeveloper via Function Calling)
+    
+    Flow:
+    User Input → Planner_proxy → PlannerAgent → Developer_proxy → QiskitDeveloper → execute_code → Result
+    """
     # Start timing
     start_time = time.time()
+
+    # ============================================================================
+    # Phase 1: Planning - PlannerAgent analyzes user input and creates plan
+    # ============================================================================
     
-    # The assistant receives a message from the user, which contains the task description
-    user_proxy.initiate_chat(
-        assistant,
-        message=user_input,
+    # Create agents from external configuration files
+    planner = create_assistant_agent("planner")
+    planner_proxy = create_user_proxy_agent("planner_proxy")
+    
+    # Get implementation plan from Planner
+    planner_proxy.initiate_chat(planner, message=user_input)
+    last_msg = planner_proxy.last_message()
+    if last_msg is None:
+        raise RuntimeError("Failed to get response from PlannerAgent")
+    plan = last_msg["content"]
+    
+    # ============================================================================
+    # Phase 2: Implementation - QiskitDeveloper generates and verifies code
+    # ============================================================================
+    
+    # Track execution results
+    execute_results = []
+    
+    def execute_code(code: str) -> str:
+        """
+        Execute Qiskit code and return results or error messages.
+        This function is called by QiskitDeveloper via Function Calling.
+        
+        Args:
+            code: Python code string to execute
+            
+        Returns:
+            Success message or error details
+        """
+        try:
+            # Create execution environment
+            exec_globals = {}
+            exec_locals = {}
+            
+            # Execute the code
+            exec(code, exec_globals, exec_locals)
+            
+            # Store successful execution
+            execute_results.append({
+                "code": code,
+                "status": "success",
+                "timestamp": time.time()
+            })
+            
+            return "✓ Code executed successfully without errors."
+            
+        except Exception as e:
+            # Store failed execution with error details
+            error_msg = f"Error: {type(e).__name__}: {str(e)}"
+            execute_results.append({
+                "code": code,
+                "status": "error",
+                "error": error_msg,
+                "timestamp": time.time()
+            })
+            
+            return f"✗ Execution failed:\n{error_msg}\n\nPlease fix the code and try again."
+    
+    # Create agents from external configuration files
+    qiskit_developer = create_assistant_agent("qiskit_developer")
+    developer_proxy = create_user_proxy_agent(
+        "developer_proxy",
+        function_map={"execute_code": execute_code}
+    )
+    
+    # Pass the plan from Planner to QiskitDeveloper
+    developer_proxy.initiate_chat(
+        qiskit_developer,
+        message=f"""Based on the following implementation plan, generate Qiskit code:
+
+{plan}
+
+Generate complete, executable Python code with all necessary imports.
+Use the execute_code function to verify your code works correctly.
+Fix any errors until the code executes successfully.
+""",
     )
     
     # Calculate elapsed time
     latency = time.time() - start_time
-
-    # Extract Qiskit code from the entire conversation history
-    qiskit_code = extract_qiskit_code_from_chat(user_proxy, assistant)
+    
+    # ============================================================================
+    # Extract final Qiskit code
+    # ============================================================================
+    
+    # Try to get the last successfully executed code
+    successful_code = None
+    for result in reversed(execute_results):
+        if result["status"] == "success":
+            successful_code = result["code"]
+            qiskit_code = f"```python\n{successful_code}\n```"
+            break
+    
+    if successful_code:
+        # Return the verified working code
+        qiskit_code = f"```python\n{successful_code}\n```"
+    else:
+        # Fallback: extract from conversation history
+        qiskit_code = f"```python```"
+    
     return qiskit_code, latency
