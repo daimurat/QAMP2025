@@ -39,10 +39,11 @@ from typing import Optional, Tuple, List
 from datasets import load_dataset
 from dotenv import load_dotenv
 
-# LangChain for LLM and RAG
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_community.vectorstores import FAISS
-from langchain_core.messages import SystemMessage, HumanMessage
+# RAG
+from rag import RAGRetriever
+
+# Groq for LLM
+from groq import Groq
 
 # ----------------------------
 # CLI & defaults
@@ -52,8 +53,8 @@ def build_cli() -> argparse.Namespace:
         description="Evaluate an OpenAI model on QiskitHumanEval with RAG support.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    p.add_argument("--model", default=os.getenv("OPENAI_EVAL_MODEL", "gpt-4o-mini"),
-                   help="OpenAI model id (e.g., gpt-4o-mini, gpt-4o).")
+    p.add_argument("--model", default=os.getenv("GROQ_EVAL_MODEL", "meta-llama/llama-4-maverick-17b-128e-instruct"),
+                   help="Groq model id (e.g., moonshotai/kimi-k2-instruct-0905).")
     p.add_argument("--dataset", default="Qiskit/qiskit_humaneval",
                    choices=["Qiskit/qiskit_humaneval", "Qiskit/qiskit_humaneval_hard"],
                    help="Which dataset variant to use.")
@@ -65,8 +66,10 @@ def build_cli() -> argparse.Namespace:
     p.add_argument("--use-rag", action="store_true", default=True, help="Use RAG for context retrieval.")
     p.add_argument("--no-rag", dest="use_rag", action="store_false", help="Disable RAG.")
     p.add_argument("--rag-top-k", type=int, default=5, help="Number of documents to retrieve for RAG.")
-    p.add_argument("--vector-store-path", default="faiss_index", help="Path to FAISS vector store.")
-    p.add_argument("--index-name", default="qiskit_docs_index", help="Name of FAISS index.")
+    p.add_argument("--db-path", default="QAMP/data/qamp.db", help="Path to SQLite vector database.")
+    p.add_argument("--difficulty", default=None,
+                   choices=["basic", "intermediate", "advanced"],
+                   help="Filter tasks by difficulty level.")
     p.add_argument("--outdir", default="out", help="Directory to write logs/artifacts.")
     p.add_argument("--dry-run", action="store_true", help="Skip model calls and reuse previous generations if present.")
     return p.parse_args()
@@ -108,38 +111,6 @@ def ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
 
 # ----------------------------
-# RAG: Vector Store initialization
-# ----------------------------
-def load_vector_store(vector_store_path: str, index_name: str) -> Optional[FAISS]:
-    """Load FAISS vector store for RAG."""
-    try:
-        embeddings = OpenAIEmbeddings()
-        vector_store = FAISS.load_local(
-            folder_path=vector_store_path,
-            index_name=index_name,
-            embeddings=embeddings,
-            allow_dangerous_deserialization=True
-        )
-        print(f"✓ Loaded vector store from {vector_store_path}")
-        return vector_store
-    except Exception as e:
-        print(f"⚠️  Failed to load vector store: {e}")
-        return None
-
-def retrieve_context(vector_store: Optional[FAISS], query: str, top_k: int = 5) -> str:
-    """Retrieve relevant context from vector store."""
-    if vector_store is None:
-        return ""
-    
-    try:
-        docs = vector_store.similarity_search(query, k=top_k)
-        context = "\n\n".join([doc.page_content for doc in docs])
-        return context
-    except Exception as e:
-        print(f"⚠️  RAG retrieval failed: {e}")
-        return ""
-
-# ----------------------------
 # Prompting helpers
 # ----------------------------
 SYSTEM_INSTRUCTIONS = """You are a senior Qiskit+Python developer.
@@ -175,9 +146,12 @@ def extract_code_only(text: str) -> str:
 # LLM call
 # ----------------------------
 def call_llm(
-    llm: ChatOpenAI,
+    client: Groq,
+    model: str,
     prompt: str,
     context: str = "",
+    temperature: float = 0.2,
+    max_output_tokens: int = 800,
 ) -> Tuple[str, Optional[int], float]:
     """
     Call LLM to generate code. Returns (text, output_token_count|None, latency).
@@ -193,25 +167,30 @@ Task:
         user_content = f"{prompt}{USER_SUFFIX}"
     
     messages = [
-        SystemMessage(content=SYSTEM_INSTRUCTIONS),
-        HumanMessage(content=user_content),
+        {"role": "system", "content": SYSTEM_INSTRUCTIONS},
+        {"role": "user", "content": user_content},
     ]
     
     t0 = time.time()
     try:
-        response = llm.invoke(messages)
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_completion_tokens=max_output_tokens,
+            top_p=1,
+            stream=False,
+            stop=None,
+        )
         latency = time.time() - t0
-        # Handle response content (can be string or list)
-        if isinstance(response.content, str):
-            text = response.content.strip()
-        else:
-            text = str(response.content).strip()
         
-        # Try to get token count
+        # Extract text from response
+        text = response.choices[0].message.content.strip()
+        
+        # Get token count
         output_tokens = None
-        if hasattr(response, "response_metadata"):
-            usage = response.response_metadata.get("token_usage", {})
-            output_tokens = usage.get("completion_tokens")
+        if response.usage:
+            output_tokens = response.usage.completion_tokens
         
         return text, output_tokens, latency
     except Exception as e:
@@ -280,14 +259,20 @@ def run_in_subprocess(code: str, timeout_sec: int) -> Tuple[bool, Optional[str]]
 # ----------------------------
 # Main evaluation loop
 # ----------------------------
-def load_tasks(dataset: str, split: str, limit: Optional[int]) -> List[Task]:
+def load_tasks(dataset: str, split: str, limit: Optional[int], difficulty: Optional[str] = None) -> List[Task]:
     ds = load_dataset(dataset, split=split)
     tasks: List[Task] = []
     for i, row in enumerate(ds):
-        if limit is not None and i >= limit:
+        # Filter by difficulty if specified
+        if difficulty is not None:
+            task_difficulty = row.get("difficulty_scale", "").lower()
+            if task_difficulty != difficulty.lower():
+                continue
+        
+        if limit is not None and len(tasks) >= limit:
             break
         tasks.append(Task(
-            idx=i,
+            idx=len(tasks),
             task_id=row.get("task_id", f"{i}"),
             entry_point=row["entry_point"],
             prompt=row["prompt"],
@@ -303,25 +288,24 @@ def evaluate(args: argparse.Namespace) -> None:
     gens_dir = out_root / "generations"
     ensure_dir(gens_dir)
 
-    # Initialize LLM
-    llm = ChatOpenAI(
-        model=args.model,
-        temperature=args.temperature,
-        max_completion_tokens=args.max_output_tokens,
-    )
-    print(f"✓ Initialized LLM: {args.model}")
+    # Initialize Groq client
+    client = Groq()
+    print(f"✓ Initialized Groq client with model: {args.model}")
 
-    # Initialize vector store for RAG
-    vector_store = None
+    # Initialize RAG retriever
+    retriever = None
     if args.use_rag:
-        vector_store = load_vector_store(args.vector_store_path, args.index_name)
-        if vector_store is None:
-            print("⚠️  RAG requested but vector store not available. Continuing without RAG.")
+        try:
+            retriever = RAGRetriever(db_path=args.db_path)
+            print(f"✓ Loaded RAG from {args.db_path}")
+        except Exception as e:
+            print(f"⚠️  RAG requested but failed to load: {e}")
             args.use_rag = False
 
     # Load tasks
-    tasks = load_tasks(args.dataset, args.split, args.max_items)
-    print(f"✓ Loaded {len(tasks)} tasks from {args.dataset}:{args.split}")
+    tasks = load_tasks(args.dataset, args.split, args.max_items, args.difficulty)
+    difficulty_str = f" (difficulty: {args.difficulty})" if args.difficulty else ""
+    print(f"✓ Loaded {len(tasks)} tasks from {args.dataset}:{args.split}{difficulty_str}")
     print(f"✓ RAG: {'enabled' if args.use_rag else 'disabled'}")
     print(f"✓ Output directory: {out_root}\n")
 
@@ -340,18 +324,21 @@ def evaluate(args: argparse.Namespace) -> None:
         else:
             # Retrieve context if RAG enabled
             context = ""
-            if args.use_rag and vector_store:
+            if args.use_rag and retriever:
                 print("  Retrieving context...")
-                context = retrieve_context(vector_store, t.prompt, top_k=args.rag_top_k)
+                context = retriever.retrieve_context(t.prompt, top_k=args.rag_top_k)
                 print(f"  Retrieved {len(context)} chars of context")
 
             # Generate code
             try:
                 print("  Generating code...")
                 raw_text, output_tokens, latency = call_llm(
-                    llm=llm,
+                    client=client,
+                    model=args.model,
                     prompt=t.prompt,
                     context=context,
+                    temperature=args.temperature,
+                    max_output_tokens=args.max_output_tokens,
                 )
             except RuntimeError as e:
                 print(f"  LLM error: {e}")
