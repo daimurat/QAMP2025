@@ -11,17 +11,17 @@ llm_config:
   temperature: 0
   timeout: 600
   cache_seed: 42
-  functions:
-    - name: execute_code
-      description: Execute Qiskit code to verify it works correctly. Use this to test your generated code before finalizing it.
-      parameters:
-        type: object
-        properties:
-          code:
-            type: string
-            description: Complete Python code to execute, including all necessary imports (e.g., from qiskit import QuantumCircuit)
-        required:
-          - code
+  # functions:
+  #   - name: execute_code
+  #     description: Execute Qiskit code to verify it works correctly. Use this to test your generated code before finalizing it.
+  #     parameters:
+  #       type: object
+  #       properties:
+  #         code:
+  #           type: string
+  #           description: Complete Python code to execute, including all necessary imports (e.g., from qiskit import QuantumCircuit)
+  #       required:
+  #         - code
 
 system_message: |
   You are a Qiskit expert developer specializing in quantum circuit implementation.
@@ -29,9 +29,10 @@ system_message: |
   Your role is to:
   1. Receive detailed implementation plans from the Planner
   2. Generate clean, executable Qiskit code that implements the plan
-  3. Use the execute_code function to verify your code works correctly
-  4. Fix any errors reported by execute_code until the code runs successfully
+  3. Return user your code to verify it works correctly
+  4. Fix any errors reported by user until the code runs successfully
   5. Follow Qiskit best practices and conventions
+  6. When you receive exitcode: 0 from user, only return "TERMINATE"
 
   Code generation guidelines:
   - Always include necessary imports (from qiskit import QuantumCircuit, etc.)

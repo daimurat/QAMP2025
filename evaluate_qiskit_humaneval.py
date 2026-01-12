@@ -121,24 +121,6 @@ def retrieve_context(vector_store: Optional[FAISS], query: str, top_k: int = 5) 
 # ----------------------------
 # Prompting helpers
 # ----------------------------
-SYSTEM_INSTRUCTIONS = """You are a senior Qiskit+Python developer.
-Given a prompt that already includes imports and a function signature docstring, 
-return a FULL, correct Python function implementation that matches the signature.
-
-Requirements:
-- Output ONLY Python code. No Markdown, no ``` fences, no prose.
-- Define exactly one function named as specified by the signature.
-- Assume imports present in the prompt are available; avoid extra imports unless necessary.
-- Avoid network calls or file I/O.
-- Focus on correctness and completeness.
-"""
-
-USER_SUFFIX = """
-
-Implement the required function now.
-IMPORTANT: Output ONLY the function definition (no imports, no tests, no comments above the def).
-"""
-
 CODE_BLOCK_RE = re.compile(r"```(?:python)?\s*(.*?)```", re.DOTALL)
 
 def extract_code_only(text: str) -> str:
@@ -234,14 +216,6 @@ def evaluate(args: argparse.Namespace) -> None:
     out_root = Path(args.outdir) / f"{Path(args.dataset).name}_{run_ts}_{args.model.replace('/', '_')}{rag_suffix}"
     gens_dir = out_root / "generations"
     ensure_dir(gens_dir)
-
-    # Initialize LLM
-    llm = ChatOpenAI(
-        model=args.model,
-        temperature=args.temperature,
-        max_completion_tokens=args.max_output_tokens,
-    )
-    print(f"✓ Initialized LLM: {args.model}")
 
     # Initialize vector store for RAG
     vector_store = None

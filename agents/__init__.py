@@ -152,7 +152,7 @@ def create_user_proxy_agent(
     if function_map:
         params['function_map'] = function_map
     
-    return UserProxyAgent(**params)
+    return UserProxyAgent(**params, is_termination_msg=lambda m: "TERMINATE" in (m.get("content") or ""),)
 
 
 def load_all_agents(
