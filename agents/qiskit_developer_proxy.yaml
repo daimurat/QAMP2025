@@ -1,5 +1,5 @@
-agent_id: developer_proxy
-name: DeveloperProxy
+agent_id: qiskit_developer_proxy
+name: QiskitDeveloperProxy
 type: user_proxy
 
 description: |
