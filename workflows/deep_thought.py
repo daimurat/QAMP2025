@@ -5,6 +5,7 @@ from autogen.agentchat import initiate_group_chat
 from autogen.agentchat.group.patterns import AutoPattern
 from autogen.code_utils import extract_code
 from agents import create_assistant_agent, create_user_proxy_agent
+from tools import retrieve_qiskit_docs
 
 def run_deep_thought_mode(user_input: str):
     """
@@ -25,12 +26,19 @@ def run_deep_thought_mode(user_input: str):
         "api_key": os.environ.get("OPENAI_API_KEY"),
     })
    
+    # Create function map for RAG tools
+    function_map = {
+        "retrieve_qiskit_docs": retrieve_qiskit_docs,
+    }
+   
     # Create agents from external configuration files
     planner = create_assistant_agent("planner")
     qiskit_developer = create_assistant_agent("qiskit_developer")
+    
+    # Create proxy with function map for tool execution
     developer_proxy = create_user_proxy_agent(
         "qiskit_developer_proxy",
-        function_map=None
+        function_map=function_map
     )
     
     # Define agents communication pattern

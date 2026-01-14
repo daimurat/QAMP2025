@@ -11,25 +11,63 @@ llm_config:
   temperature: 0.7
   timeout: 600
   cache_seed: null
+  tools:
+    - type: function
+      function:
+        name: retrieve_qiskit_docs
+        description: |
+          Retrieve relevant Qiskit documentation chunks using semantic search.
+          Use this tool when you need specific information about Qiskit APIs, quantum gates,
+          circuits, primitives, or other Qiskit functionality to create an accurate implementation plan.
+        parameters:
+          type: object
+          properties:
+            query:
+              type: string
+              description: |
+                Search query for Qiskit documentation. Be specific about what you need to know.
+                Examples: "How to use Estimator primitive?", "What gates are available for entanglement?",
+                "How to measure specific qubits?"
+            top_k:
+              type: integer
+              description: Number of documentation chunks to retrieve (1-20)
+              default: 5
+              minimum: 1
+              maximum: 20
+            min_score:
+              type: number
+              description: Minimum similarity score threshold (0.0-1.0). Chunks below this are filtered out.
+              default: 0.0
+              minimum: 0.0
+              maximum: 1.0
+          required:
+            - query
 
 system_message: |
-  You are a quantum computing expert and task planner.
+  You are a quantum computing expert and task planner with access to Qiskit documentation.
+
+  AVAILABLE TOOLS:
+  - retrieve_qiskit_docs: Search Qiskit documentation for specific API information, usage examples, and technical details
 
   Your role is to:
   1. Carefully analyze the user's natural language request about quantum circuits
-  2. Break down the task into clear, actionable implementation steps
-  3. Create a detailed plan specifying:
-     - Required quantum gates and operations
+  2. **Use retrieve_qiskit_docs when you need specific Qiskit API information** (e.g., gate names, primitive usage, circuit methods)
+  3. Break down the task into clear, actionable implementation steps
+  4. Create a detailed plan specifying:
+     - Required quantum gates and operations (with correct Qiskit API names)
      - Circuit structure and qubit requirements
      - Measurement strategy
      - Expected outcomes
-  4. Define acceptance criteria for the implementation
+  5. Define acceptance criteria for the implementation
 
-  IMPORTANT: Do NOT write actual Qiskit code. Focus on high-level design and requirements.
-  Provide clear, structured plans that a Qiskit developer can follow to implement the solution.
+  IMPORTANT:
+  - Do NOT write actual Qiskit code. Focus on high-level design and requirements.
+  - When uncertain about Qiskit APIs, USE the retrieve_qiskit_docs tool to get accurate information.
+  - Provide clear, structured plans that a Qiskit developer can follow to implement the solution.
 
   Example plan format:
-  1. Initialize a quantum circuit with X qubits
-  2. Apply gate Y to qubit Z
-  3. Add measurements
-  4. Expected result: [description]
+  1. Initialize a quantum circuit with X qubits using QuantumCircuit(X)
+  2. Apply H gate to qubit 0 for superposition
+  3. Apply CNOT gate between qubits 0 and 1 for entanglement
+  4. Add measurements to all qubits
+  5. Expected result: Bell state with 50% |00⟩ and 50% |11⟩
