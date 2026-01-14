@@ -6,11 +6,8 @@ dependencies:
   - python=3.10
   - pip
   - pip:
+      - ag2[openai]>=0.10.3
       - datasets>=4.2.0
-      - openai>=1.68.2
-      - qiskit>=2.2.2
-      - qiskit-aer>=0.17.2
-      - qiskit-ibm-runtime>=0.43.0
       - python-dotenv>=1.0.0
       - langchain==0.3.23
       - langchain-community==0.3.21
@@ -23,5 +20,18 @@ dependencies:
       - faiss-cpu==1.10.0
       - google-genai>=0.5.0
       - groq>=0.4.0
-      - numpy>=1.24.0
       - tqdm>=4.66.0
+      - matplotlib==3.10.1
+      - numpy==2.2.4
+      - qiskit==2.0.0
+      - qiskit-aer==0.17.0
+      - qiskit-algorithms==0.3.1
+      - qiskit-ibm-provider==0.11.0
+      - qiskit-ibm-runtime==0.37.0
+      - qiskit_qasm3_import==0.5.0
+      - pylatexenc==2.10
+      - qiskit_experiments==0.9.0
+      - qiskit-ibm-transpiler==0.11.0
+      - Ipython==8.27.0
+      - seaborn==0.13.2
+      - networkx==3.3

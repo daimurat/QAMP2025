@@ -1,0 +1,17 @@
+agent_id: qiskit_developer_proxy
+name: QiskitDeveloperProxy
+type: user_proxy
+
+description: |
+  Proxy that manages communication between QiskitDeveloper and code execution
+
+proxy_config:
+  human_input_mode: NEVER
+  max_consecutive_auto_reply: 10
+  code_execution_config:
+    work_dir: work
+    last_n_messages: 1
+    use_docker: false
+  # function_map will be set at runtime in deep_thought.py
+
+# Made with Bob

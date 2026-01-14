@@ -1,25 +1,3 @@
-#!/usr/bin/env python3
-"""
-Evaluate an OpenAI model on the QiskitHumanEval benchmark with RAG support.
-
-This script integrates CLAPP's RAG backend with the QiskitHumanEval evaluation framework.
-- Loads tasks from Hugging Face: Qiskit/qiskit_humaneval (default) or qiskit_humaneval_hard
-- Uses RAG to retrieve relevant Qiskit documentation for context
-- For each task:
-  * Retrieves context from vector store (if RAG enabled)
-  * Sends the prompt with context to the model
-  * Combines the original prompt, the model completion, and the dataset's test code
-  * Executes tests in an isolated subprocess with a timeout
-- Produces pass@1, a CSV of per-task outcomes, and saves raw generations.
-
-⚠️ This executes LLM-generated Python. Run only in an isolated, throwaway environment.
-
-References:
-- Dataset: https://huggingface.co/datasets/Qiskit/qiskit_humaneval
-- Paper: "Qiskit HumanEval" (arXiv:2406.14712): https://arxiv.org/abs/2406.14712
-- CLAPP: Multi-agent system with RAG for Qiskit code generation
-"""
-
 from __future__ import annotations
 import argparse
 import csv
@@ -45,6 +23,8 @@ from rag import RAGRetriever
 
 # Groq for LLM
 from groq import Groq
+
+from workflows.deep_thought import run_deep_thought_mode
 
 # ----------------------------
 # CLI & defaults
@@ -97,7 +77,6 @@ class Result:
     entry_point: str
     passed: bool
     error: Optional[str]
-    gen_tokens: Optional[int]
     prompt_chars: int
     completion_chars: int
     latency_s: float
@@ -119,24 +98,6 @@ def ensure_dir(p: Path) -> None:
 # ----------------------------
 # Prompting helpers
 # ----------------------------
-SYSTEM_INSTRUCTIONS = """You are a senior Qiskit+Python developer.
-Given a prompt that already includes imports and a function signature docstring, 
-return a FULL, correct Python function implementation that matches the signature.
-
-Requirements:
-- Output ONLY Python code. No Markdown, no ``` fences, no prose.
-- Define exactly one function named as specified by the signature.
-- Assume imports present in the prompt are available; avoid extra imports unless necessary.
-- Avoid network calls or file I/O.
-- Focus on correctness and completeness.
-"""
-
-USER_SUFFIX = """
-
-Implement the required function now.
-IMPORTANT: Output ONLY the function definition (no imports, no tests, no comments above the def).
-"""
-
 CODE_BLOCK_RE = re.compile(r"```(?:python)?\s*(.*?)```", re.DOTALL)
 
 def extract_code_only(text: str) -> str:
@@ -147,61 +108,6 @@ def extract_code_only(text: str) -> str:
     """
     m = CODE_BLOCK_RE.search(text)
     return m.group(1).strip() if m else text.strip()
-
-# ----------------------------
-# LLM call
-# ----------------------------
-def call_llm(
-    client: Groq,
-    model: str,
-    prompt: str,
-    context: str = "",
-    temperature: float = 0.2,
-    max_output_tokens: int = 800,
-) -> Tuple[str, Optional[int], float]:
-    """
-    Call LLM to generate code. Returns (text, output_token_count|None, latency).
-    """
-    # Build user message
-    if context:
-        user_content = f"""Context from Qiskit documentation:
-{context}
-
-Task:
-{prompt}{USER_SUFFIX}"""
-    else:
-        user_content = f"{prompt}{USER_SUFFIX}"
-    
-    messages = [
-        {"role": "system", "content": SYSTEM_INSTRUCTIONS},
-        {"role": "user", "content": user_content},
-    ]
-    
-    t0 = time.time()
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            max_completion_tokens=max_output_tokens,
-            top_p=1,
-            stream=False,
-            stop=None,
-        )
-        latency = time.time() - t0
-        
-        # Extract text from response
-        text = response.choices[0].message.content.strip()
-        
-        # Get token count
-        output_tokens = None
-        if response.usage:
-            output_tokens = response.usage.completion_tokens
-        
-        return text, output_tokens, latency
-    except Exception as e:
-        latency = time.time() - t0
-        raise RuntimeError(f"LLM API error: {e}") from e
 
 # ----------------------------
 # Execution harness
@@ -382,17 +288,10 @@ def evaluate(args: argparse.Namespace) -> None:
             # Generate code
             try:
                 print("  Generating code...")
-                raw_text, output_tokens, latency = call_llm(
-                    client=client,
-                    model=args.model,
-                    prompt=t.prompt,
-                    context=context,
-                    temperature=args.temperature,
-                    max_output_tokens=args.max_output_tokens,
-                )
+                raw_text, latency = run_deep_thought_mode(t.prompt)
             except RuntimeError as e:
                 print(f"  LLM error: {e}")
-                raw_text, output_tokens, latency = "", None, 0.0
+                raw_text, latency = "", 0.0
 
             completion_text = extract_code_only(raw_text)
             gen_path.write_text(completion_text, encoding="utf-8")
@@ -418,7 +317,6 @@ def evaluate(args: argparse.Namespace) -> None:
             entry_point=t.entry_point,
             passed=passed,
             error=err,
-            gen_tokens=output_tokens,
             prompt_chars=len(t.prompt),
             completion_chars=len(completion_text),
             latency_s=latency,
