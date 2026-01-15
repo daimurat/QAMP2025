@@ -74,6 +74,7 @@ def list_available_agents() -> list:
 
 def create_assistant_agent(
     agent_id: str,
+    function_map: Optional[Dict[str, Callable]] = None
 ) -> AssistantAgent:
     """
     Create an AssistantAgent from configuration file.
@@ -108,7 +109,8 @@ def create_assistant_agent(
         name=config.get('name', agent_id),
         description=config.get('description', ''),
         system_message=config.get('system_message', ''),
-        llm_config=llm_config
+        llm_config=llm_config,
+        function_map=function_map
     )
 
 

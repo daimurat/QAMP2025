@@ -1,9 +1,7 @@
-from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
 import json
-import logging
 import os
 import re
 import subprocess
@@ -17,12 +15,6 @@ from typing import Optional, Tuple, List
 # Third-party
 from datasets import load_dataset
 from dotenv import load_dotenv
-
-# RAG
-from rag import RAGRetriever
-
-# Groq for LLM
-from groq import Groq
 
 from workflows.deep_thought import run_deep_thought_mode
 
@@ -211,28 +203,6 @@ def evaluate(args: argparse.Namespace) -> None:
     gens_dir = out_root / "generations"
     ensure_dir(gens_dir)
 
-    # # Setup RAG debug logger (writes to file, not console)
-    # rag_logger = logging.getLogger("rag_debug")
-    # rag_logger.setLevel(logging.DEBUG)
-    # rag_logger.propagate = False  # Don't print to console
-    # rag_handler = logging.FileHandler(out_root / "rag_debug.log", mode="w", encoding="utf-8")
-    # rag_handler.setFormatter(logging.Formatter("%(message)s"))
-    # rag_logger.addHandler(rag_handler)
-
-    # # Initialize Groq client
-    # client = Groq()
-    # print(f"✓ Initialized Groq client with model: {args.model}")
-
-    # # Initialize RAG retriever
-    # retriever = None
-    # if args.use_rag:
-    #     try:
-    #         retriever = RAGRetriever(db_path=args.db_path)
-    #         print(f"✓ Loaded RAG from {args.db_path}")
-    #     except Exception as e:
-    #         print(f"⚠️  RAG requested but failed to load: {e}")
-    #         args.use_rag = False
-
     # Load tasks
     tasks = load_tasks(args.dataset, args.split, args.max_items, args.difficulty, args.task_id)
     difficulty_str = f" (difficulty: {args.difficulty})" if args.difficulty else ""
@@ -252,39 +222,9 @@ def evaluate(args: argparse.Namespace) -> None:
         chunks_used = 0  # Track how many RAG chunks were used
         if args.dry_run and gen_path.exists():
             completion_text = gen_path.read_text(encoding="utf-8")
-            output_tokens = None
             latency = 0.0
             print("  (dry-run) Loaded cached completion.")
         else:
-            # # Retrieve context if RAG enabled
-            # context = ""
-            # chunks_used = 0
-            # if args.use_rag and retriever:
-            #     print("  Retrieving context...")
-            #     # Use retrieve() to get scores, then build context
-            #     all_chunks = retriever.retrieve(t.prompt, top_k=args.rag_top_k)
-                
-            #     # Filter by minimum score
-            #     chunks = [c for c in all_chunks if c["score"] >= args.rag_min_score]
-            #     chunks_used = len(chunks)
-            #     context = "\n\n".join(chunk["text"] for chunk in chunks)
-                
-            #     print(f"  Retrieved {len(all_chunks)} chunks, {chunks_used} passed min_score={args.rag_min_score} ({len(context)} chars)")
-                
-            #     # Log RAG details to file
-            #     rag_logger.debug(f"\n{'='*80}")
-            #     rag_logger.debug(f"Task: {t.task_id} ({t.entry_point})")
-            #     rag_logger.debug(f"Query (prompt): {t.prompt[:500]}..." if len(t.prompt) > 500 else f"Query (prompt): {t.prompt}")
-            #     rag_logger.debug(f"\nRetrieved {len(all_chunks)} chunks, {chunks_used} passed min_score={args.rag_min_score}:")
-            #     for i, chunk in enumerate(all_chunks):
-            #         used = chunk["score"] >= args.rag_min_score
-            #         used_marker = "[USED]" if used else "[FILTERED OUT]"
-            #         rag_logger.debug(f"\n--- Chunk {i+1} (score: {chunk['score']:.4f}) {used_marker} ---")
-            #         rag_logger.debug(f"Source: {chunk.get('source', 'N/A')}")
-            #         rag_logger.debug(f"URL: {chunk.get('url', 'N/A')}")
-            #         rag_logger.debug(f"Text preview: {chunk['text'][:300]}..." if len(chunk['text']) > 300 else f"Text: {chunk['text']}")
-            #     rag_logger.debug(f"\nTotal context length: {len(context)} chars, chunks used: {chunks_used}/{len(all_chunks)}")
-
             # Generate code
             try:
                 print("  Generating code...")

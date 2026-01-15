@@ -32,14 +32,11 @@ def run_deep_thought_mode(user_input: str):
     }
    
     # Create agents from external configuration files
-    planner = create_assistant_agent("planner")
+    planner = create_assistant_agent("planner", function_map=function_map)
     qiskit_developer = create_assistant_agent("qiskit_developer")
     
     # Create proxy with function map for tool execution
-    developer_proxy = create_user_proxy_agent(
-        "qiskit_developer_proxy",
-        function_map=function_map
-    )
+    developer_proxy = create_user_proxy_agent("qiskit_developer_proxy")
     
     # Define agents communication pattern
     pattern = AutoPattern(
