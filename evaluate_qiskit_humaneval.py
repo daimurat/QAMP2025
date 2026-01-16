@@ -35,9 +35,6 @@ def build_cli() -> argparse.Namespace:
     p.add_argument("--max-items", type=int, default=None, help="Limit number of tasks for a quick run.")
     p.add_argument("--temperature", type=float, default=0.2, help="Sampling temperature.")
     p.add_argument("--max-output-tokens", type=int, default=800, help="Max tokens to generate.")
-    p.add_argument("--timeout-sec", type=int, default=45, help="Per-test execution timeout (seconds).")
-    p.add_argument("--use-rag", action="store_true", default=True, help="Use RAG for context retrieval.")
-    p.add_argument("--no-rag", dest="use_rag", action="store_false", help="Disable RAG.")
     p.add_argument("--rag-top-k", type=int, default=5, help="Number of documents to retrieve for RAG.")
     p.add_argument("--rag-min-score", type=float, default=0.0,
                    help="Minimum similarity score for RAG chunks (0.0-1.0). Chunks below this are discarded.")
@@ -75,7 +72,6 @@ class Result:
     difficulty_scale: Optional[str]
     model: str
     file_path: str
-    rag_used: bool
     rag_chunks_used: int
 
 # ----------------------------
@@ -163,7 +159,13 @@ def run_in_subprocess(code: str, timeout_sec: int) -> Tuple[bool, Optional[str]]
 # ----------------------------
 # Main evaluation loop
 # ----------------------------
-def load_tasks(dataset: str, split: str, limit: Optional[int], difficulty: Optional[str] = None, task_id: Optional[str] = None) -> List[Task]:
+def load_tasks(
+    dataset: str,
+    split: str,
+    limit: Optional[int],
+    difficulty: Optional[str] = None,
+    task_id: Optional[str] = None
+) -> List[Task]:
     ds = load_dataset(dataset, split=split)
     tasks: List[Task] = []
     for i, row in enumerate(ds):
@@ -202,15 +204,12 @@ def evaluate(args: argparse.Namespace) -> None:
     out_root = Path(args.outdir) / f"{Path(args.dataset).name}_{run_ts}_{args.model.replace('/', '_')}{rag_suffix}"
     gens_dir = out_root / "generations"
     ensure_dir(gens_dir)
+    print(f"✓ Output directory: {out_root}\n")
 
     # Load tasks
     tasks = load_tasks(args.dataset, args.split, args.max_items, args.difficulty, args.task_id)
     difficulty_str = f" (difficulty: {args.difficulty})" if args.difficulty else ""
     print(f"✓ Loaded {len(tasks)} tasks from {args.dataset}:{args.split}{difficulty_str}")
-    print(f"✓ RAG: {'enabled' if args.use_rag else 'disabled'}")
-    if args.use_rag:
-        print(f"✓ RAG debug log: {out_root / 'rag_debug.log'}")
-    print(f"✓ Output directory: {out_root}\n")
 
     results: List[Result] = []
 
@@ -263,7 +262,6 @@ def evaluate(args: argparse.Namespace) -> None:
             difficulty_scale=t.difficulty_scale,
             model=args.model,
             file_path=str(gen_path),
-            rag_used=args.use_rag,
             rag_chunks_used=chunks_used,
         )
         results.append(res)
@@ -315,8 +313,6 @@ def evaluate(args: argparse.Namespace) -> None:
     print(f"\n✓ Artifacts written to: {out_root}")
     print(f"✓ Results CSV: {csv_path}")
     print(f"✓ Summary JSON: {out_root / 'summary.json'}")
-    if args.use_rag:
-        print(f"✓ RAG debug log: {out_root / 'rag_debug.log'}")
 
 if __name__ == "__main__":
     load_dotenv()
