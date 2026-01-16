@@ -10,6 +10,7 @@ from .planner import PlannerAgentImpl
 from .code_agent import CodeAgentImpl
 from .executor import ExecutorAgentImpl
 from .evaluator import EvaluatorAgentImpl
+from .sandbox import LocalCodeSandbox
 
 __all__ = [
     "Agent",
@@ -22,4 +23,5 @@ __all__ = [
     "CodeAgentImpl",
     "ExecutorAgentImpl",
     "EvaluatorAgentImpl",
+    "LocalCodeSandbox",
 ]

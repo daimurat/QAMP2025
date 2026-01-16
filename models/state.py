@@ -137,7 +137,7 @@ class RetrievedDocument:
     source: str
     url: str
     relevance_score: float
-    retrieved_at: datetime
+    retrieved_at: Optional[datetime]
     query_used: str
 
     def to_dict(self) -> Dict[str, Any]:
@@ -147,7 +147,7 @@ class RetrievedDocument:
             "source": self.source,
             "url": self.url,
             "relevance_score": float(self.relevance_score),
-            "retrieved_at": self.retrieved_at.isoformat(),
+            "retrieved_at": self.retrieved_at.isoformat() if self.retrieved_at else None,
             "query_used": self.query_used,
         }
 
