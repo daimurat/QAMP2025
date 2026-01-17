@@ -53,8 +53,14 @@ class EvaluatorAgentImpl(EvaluatorAgent):
             input.code,
             "\n## Execution Result\n",
             f"success: {input.execution_result.success}\nstdout:\n{input.execution_result.stdout}\nstderr:\n{input.execution_result.stderr}\nerror:{input.execution_result.error_traceback}",
-            f"\n## Iteration {input.iteration_number}/{input.max_iterations}",
         ]
+        # Add test verification result if available
+        if input.test_result is not None:
+            parts.append("\n## Test Verification\n")
+            parts.append(f"test_passed: {input.test_result.passed}")
+            if input.test_result.error:
+                parts.append(f"\ntest_error: {input.test_result.error}")
+        parts.append(f"\n## Iteration {input.iteration_number}/{input.max_iterations}")
         return "\n".join(parts)
 
     def _parse_output(self, raw: str) -> EvaluatorOutput:

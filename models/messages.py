@@ -34,6 +34,7 @@ class PlannerOutput:
 
 @dataclass
 class CodeAgentInput:
+    user_question: str  # Original user question containing function signature
     plan: Plan
     code_requirements: List[str]
     retrieved_context: str
@@ -57,12 +58,15 @@ class ExecutorInput:
     allowed_imports: List[str] = field(
         default_factory=lambda: [
             "qiskit",
+            "qiskit_aer",
+            "qiskit_ibm_runtime",
             "numpy",
             "matplotlib",
             "scipy",
             "math",
             "json",
             "datetime",
+            "collections",
         ]
     )
     working_directory: str = "work"
@@ -83,6 +87,7 @@ class EvaluatorInput:
     iteration_number: int
     max_iterations: int
     previous_evaluations: List[Evaluation]
+    test_result: Optional[Any] = None  # TestResult from test verification
 
 
 @dataclass

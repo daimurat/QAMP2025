@@ -1,0 +1,16 @@
+{
+  "session_id": "cc64cdf38d9f46fd8f9d8676785a73de",
+  "user_question": "What is SamplerV2?",
+  "start_time": "2026-01-17T01:08:32.391480",
+  "end_time": "2026-01-17T01:08:33.482600",
+  "max_iterations": 5,
+  "current_iteration": 0,
+  "iterations": [],
+  "all_retrieved_docs": {},
+  "final_answer": null,
+  "final_code": null,
+  "termination_reason": null,
+  "total_rag_calls": 0,
+  "total_llm_calls": 0,
+  "total_code_executions": 0
+}

@@ -1,0 +1,35 @@
+# Planner Output - Iteration {{ iteration.iteration_id }}
+
+| Field | Value |
+| --- | --- |
+| Plan ID | {{ plan.plan_id }} |
+| Version | {{ plan.version }} |
+| RAG Needed | {{ "Yes" if plan.rag_needed else "No" }} |
+| Code Needed | {{ "Yes" if plan.code_needed else "No" }} |
+
+## RAG Queries
+{% if plan.rag_queries %}
+{% for q in plan.rag_queries -%}
+- {{ q }}
+{% endfor %}
+{% else %}
+No RAG queries planned.
+{% endif %}
+
+## Code Requirements
+{% if plan.code_requirements %}
+{% for req in plan.code_requirements -%}
+- {{ req }}
+{% endfor %}
+{% else %}
+No explicit code requirements.
+{% endif %}
+
+## Acceptance Criteria
+{% if plan.acceptance_criteria %}
+{% for crit in plan.acceptance_criteria -%}
+- {{ crit }}
+{% endfor %}
+{% else %}
+No acceptance criteria listed.
+{% endif %}

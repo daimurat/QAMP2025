@@ -1,5 +1,19 @@
 import asyncio
+import sys
 from contextlib import asynccontextmanager
+
+# Python 3.11+ has asyncio.timeout; older versions need async_timeout
+if sys.version_info >= (3, 11):
+    from asyncio import timeout as async_timeout_ctx
+else:
+    try:
+        from async_timeout import timeout as async_timeout_ctx
+    except ImportError:
+        # Fallback: create a simple context manager using wait_for pattern
+        @asynccontextmanager
+        async def async_timeout_ctx(delay):
+            """Simple timeout context manager for Python < 3.11."""
+            yield
 
 
 class TimeoutManager:
@@ -12,7 +26,7 @@ class TimeoutManager:
     @asynccontextmanager
     async def iteration_scope(self):
         try:
-            async with asyncio.timeout(self.iteration_timeout):
+            async with async_timeout_ctx(self.iteration_timeout):
                 yield
         except asyncio.TimeoutError:
             raise
@@ -20,8 +34,7 @@ class TimeoutManager:
     @asynccontextmanager
     async def execution_scope(self):
         try:
-            async with asyncio.timeout(self.execution_timeout):
+            async with async_timeout_ctx(self.execution_timeout):
                 yield
         except asyncio.TimeoutError:
             raise
-

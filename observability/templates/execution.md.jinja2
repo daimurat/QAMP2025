@@ -1,0 +1,18 @@
+# Code Execution - Iteration {{ iteration.iteration_id }}
+
+| Field | Value |
+| --- | --- |
+| Success | {{ iteration.execution_result.success }} |
+| Time (ms) | {{ iteration.execution_result.execution_time_ms }} |
+| Memory (MB) | {{ iteration.execution_result.memory_usage_mb }} |
+| Error Type | {{ iteration.execution_result.error_type or "n/a" }} |
+
+## Stdout
+```
+{{ iteration.execution_result.stdout or "" }}
+```
+
+## Stderr
+```
+{{ iteration.execution_result.stderr or "" }}
+```

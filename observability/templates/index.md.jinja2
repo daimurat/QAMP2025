@@ -1,0 +1,17 @@
+# Evaluation Run Index
+
+Run ID: {{ run_id }}
+Generated: {{ generated_at }}
+
+| Metric | Value |
+| --- | --- |
+| Total Tasks | {{ totals.total }} |
+| Passed | {{ totals.passed }} |
+| Failed | {{ totals.failed }} |
+| Pass Rate | {{ "%.1f%%" | format(totals.pass_rate * 100) }} |
+
+| Task ID | Status | Iterations | Time (s) | Test Error |
+| --- | --- | --- | --- | --- |
+{% for task in tasks -%}
+| {% if task.link %}[{{ task.display_id }}]({{ task.link }}){% else %}{{ task.display_id }}{% endif %} | {{ task.status }} | {{ task.iterations }} | {{ "%.2f" | format(task.time_seconds or 0) }} | {{ task.test_error or "" }} |
+{% endfor %}

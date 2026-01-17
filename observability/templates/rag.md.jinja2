@@ -1,0 +1,43 @@
+# RAG Retrieval - Iteration {{ iteration.iteration_id }}
+
+{% if iteration.rag_queries %}
+**Queries Executed**: {{ iteration.rag_queries | length }}
+**Total Documents Retrieved**: {{ iteration.retrieved_documents | length }}
+{% else %}
+No RAG queries executed in this iteration.
+{% endif %}
+
+{% for query in iteration.rag_queries %}
+## Query {{ loop.index }}: `{{ query }}`
+
+{% set docs = query_docs.get(query, []) %}
+{% if docs %}
+### Retrieved Documents
+{% for doc in docs %}
+#### Doc {{ loop.index }} (score: {{ "%.2f" | format(doc.relevance_score) }})
+
+**Source**: {{ doc.source or "unknown" }}
+**URL**: {{ doc.url or "n/a" }}
+
+{% if include_chunks %}
+```markdown
+{{ doc.text | truncate_lines(max_lines) }}
+```
+{% endif %}
+
+---
+{% endfor %}
+{% else %}
+No documents retrieved for this query.
+{% endif %}
+{% endfor %}
+
+{% if rag_summary %}
+## RAG Summary
+
+| Query | Docs Retrieved | Max Score |
+| --- | --- | --- |
+{% for row in rag_summary -%}
+| {{ row.query }} | {{ row.docs }} | {{ row.max_score }} |
+{% endfor %}
+{% endif %}

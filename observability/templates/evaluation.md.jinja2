@@ -1,0 +1,35 @@
+# Evaluation - Iteration {{ iteration.iteration_id }}
+
+| Field | Value |
+| --- | --- |
+| Decision | {{ iteration.decision.value if iteration.decision else "unknown" }} |
+| Answers Question | {{ iteration.evaluation.answers_question if iteration.evaluation else "n/a" }} |
+| Code Executes | {{ iteration.evaluation.code_executes if iteration.evaluation else "n/a" }} |
+| Output Valid | {{ iteration.evaluation.output_valid if iteration.evaluation else "n/a" }} |
+| Correctness Score | {{ iteration.evaluation.correctness_score if iteration.evaluation else "n/a" }} |
+| Completeness Score | {{ iteration.evaluation.completeness_score if iteration.evaluation else "n/a" }} |
+| Code Quality Score | {{ iteration.evaluation.code_quality_score if iteration.evaluation else "n/a" }} |
+
+{% if iteration.evaluation %}
+## Reasoning
+{{ iteration.evaluation.reasoning }}
+
+{% if iteration.evaluation.identified_issues %}
+## Identified Issues
+{% for issue in iteration.evaluation.identified_issues -%}
+- {{ issue }}
+{% endfor %}
+{% endif %}
+
+{% if iteration.evaluation.suggested_improvements %}
+## Suggested Improvements
+{% for imp in iteration.evaluation.suggested_improvements -%}
+- {{ imp }}
+{% endfor %}
+{% endif %}
+{% endif %}
+
+{% if iteration.feedback %}
+## Feedback
+{{ iteration.feedback }}
+{% endif %}

@@ -1,0 +1,35 @@
+# Requirements for Multi-Agent Evaluation (Qiskit HumanEval compatible)
+# Requires Python 3.10-3.12 (NOT Python 3.13+)
+
+# === Qiskit Core (matching RAG documentation) ===
+qiskit==2.3.0
+qiskit-aer==0.17.2
+qiskit-ibm-runtime==0.45.0
+pylatexenc>=2.10
+
+# === Scientific ===
+matplotlib==3.10.1
+numpy==2.2.4
+scipy
+networkx==3.3
+seaborn==0.13.2
+
+# === HuggingFace ===
+datasets>=2.6.1
+huggingface_hub>=0.11.1
+
+# === LLM API Clients ===
+groq>=0.4.0
+openai>=1.68.0
+google-genai>=0.5.0
+
+# === Multi-Agent Framework ===
+langchain>=0.3.0
+langchain-community>=0.3.0
+langchain-core>=0.3.0
+langchain-openai>=0.3.0
+
+# === CLI & Utilities ===
+python-dotenv>=1.0.0
+pyyaml>=6.0.0
+tqdm>=4.66.0

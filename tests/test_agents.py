@@ -106,6 +106,7 @@ async def test_concrete_code_agent_invocation():
     assert agent.name == "code_agent"
     out = await agent.invoke(
         CodeAgentInput(
+            user_question="def sample_func(): pass",
             plan=_sample_plan(),
             code_requirements=[],
             retrieved_context="",
@@ -241,6 +242,7 @@ async def test_code_agent_impl_extracts_code():
     agent = CodeAgentImpl(llm_client=llm, prompt_path="prompts/code_agent.txt")
     out = await agent.invoke(
         CodeAgentInput(
+            user_question="def sample_func(): pass",
             plan=_sample_plan(),
             code_requirements=[],
             retrieved_context="",

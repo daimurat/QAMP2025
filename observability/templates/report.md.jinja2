@@ -1,0 +1,30 @@
+# Query Report: {{ task_id }}
+
+| Field | Value |
+| --- | --- |
+| Task ID | {{ task_id }} |
+| Status | {{ status.upper() }} |
+| Iterations | {{ iterations }} |
+| Total Time | {{ total_time }} |
+| Termination | {{ termination }} |
+
+## Prompt
+```
+{{ prompt }}
+```
+
+{% if test_error %}
+## Test Error
+```
+{{ test_error }}
+```
+{% endif %}
+
+## Iterations
+{% if iteration_links %}
+{% for it in iteration_links -%}
+- Iteration {{ it.iteration_id }} ({{ it.decision }}) - {{ it.path }}
+{% endfor %}
+{% else %}
+No iterations recorded.
+{% endif %}

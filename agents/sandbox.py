@@ -28,7 +28,7 @@ class LocalCodeSandbox:
         working_directory: str,
         max_memory_mb: int = 512,
     ) -> ExecutionResult:
-        work_dir = Path(working_directory)
+        work_dir = Path(working_directory).resolve()  # Absolute path prevents duplication
         work_dir.mkdir(parents=True, exist_ok=True)
 
         # Basic import whitelist check

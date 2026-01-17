@@ -1,0 +1,16 @@
+orchestrator:
+  max_iterations: 5
+  iteration_timeout_seconds: 600
+  code_execution_timeout_seconds: 60
+  enable_code_execution: true
+  enable_rag: true
+models:
+  provider: "openrouter"
+  planner:
+    model: "openai/gpt-oss-120b"
+  code_agent:
+    model: "openai/gpt-oss-120b"
+  evaluator:
+    model: "openai/gpt-oss-120b"
+evaluation:
+  timeout_per_task_seconds: 600

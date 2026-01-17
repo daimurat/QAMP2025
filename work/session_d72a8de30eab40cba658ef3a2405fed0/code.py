@@ -1,0 +1,8 @@
+from qiskit import QuantumCircuit
+
+def create_state_prep():
+    """ Return a QuantumCircuit that prepares the binary state 1.
+    """
+    circuit = QuantumCircuit(1)
+    circuit.x(0)
+    return circuit

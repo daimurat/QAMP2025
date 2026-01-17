@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from agents import CodeAgent, EvaluatorAgent, ExecutorAgent, PlannerAgent
 from models import (
@@ -38,6 +38,8 @@ class MultiAgentOrchestrator:
         state_manager: StateManager,
         config: OrchestratorConfig,
         retry_policy: Optional[RetryPolicy] = None,
+        progress_callback: Optional[Callable[[str, int], None]] = None,
+        test_verifier: Optional[any] = None,
     ):
         self.planner = planner
         self.code_agent = code_agent
@@ -52,12 +54,14 @@ class MultiAgentOrchestrator:
             execution_timeout=config.code_execution_timeout_seconds,
         )
         self._cancelled = False
+        self._progress_callback = progress_callback
+        self._test_verifier = test_verifier
 
     def cancel(self) -> None:
         self._cancelled = True
 
-    def get_state(self) -> SessionState:
-        raise NotImplementedError("State retrieval requires session_id")
+    def get_state(self, session_id: str) -> SessionState:
+        return self.state_manager.get_session(session_id)
 
     async def run(
         self,
@@ -100,8 +104,8 @@ class MultiAgentOrchestrator:
 
             return self._create_max_iterations_result(session, start_time)
 
-        except Exception:
-            return self._create_error_result(session, start_time)
+        except Exception as e:
+            return self._create_error_result(session, e, start_time)
         finally:
             session.end_time = datetime.now()
             self.state_manager.update_session(
@@ -119,6 +123,7 @@ class MultiAgentOrchestrator:
 
         async with self.timeout_manager.iteration_scope():
             # Planner
+            self._notify_phase("planner", iteration_id)
             planner_input = self._build_planner_input(
                 user_question=user_question,
                 iteration_id=iteration_id,
@@ -135,6 +140,7 @@ class MultiAgentOrchestrator:
             # RAG
             retrieved_docs: List[RetrievedDocument] = []
             if plan.rag_needed and plan.rag_queries:
+                self._notify_phase("rag", iteration_id)
                 queries = plan.rag_queries[: config.max_rag_queries_per_iteration]
                 rag_results = await with_retry(
                     lambda: self.rag.retrieve(queries, top_k=5),
@@ -149,8 +155,10 @@ class MultiAgentOrchestrator:
                     session.total_rag_calls += len(queries)
 
             # Code Agent
+            self._notify_phase("code", iteration_id)
             context = self._format_context(list(session.all_retrieved_docs.values()))
             code_input = CodeAgentInput(
+                user_question=user_question,
                 plan=plan,
                 code_requirements=plan.code_requirements,
                 retrieved_context=context,
@@ -175,6 +183,7 @@ class MultiAgentOrchestrator:
             # Executor
             execution_result = None
             if config.enable_code_execution and plan.code_needed:
+                self._notify_phase("executor", iteration_id)
                 exec_input = ExecutorInput(
                     code=code_output.code,
                     timeout_seconds=config.code_execution_timeout_seconds,
@@ -202,7 +211,35 @@ class MultiAgentOrchestrator:
                     error_traceback=None,
                 )
 
+            # Run test verification inside loop if verifier is provided
+            # This enables deterministic retrying on runtime errors.
+            test_result = None
+            if self._test_verifier and execution_result.success:
+                from orchestrator.test_verifier import TestResult
+                test_result = self._test_verifier.verify(code_output.code)
+                
+                # If test failed with an error (not just assertion failure),
+                # surface it to the evaluator for retry decisions.
+                if not test_result.passed and test_result.error:
+                    # Update execution_result to reflect test failure
+                    from models import ExecutionResult
+                    execution_result = ExecutionResult(
+                        success=False,
+                        stdout=execution_result.stdout,
+                        stderr=test_result.error,
+                        return_value=None,
+                        artifacts=execution_result.artifacts,
+                        execution_time_ms=execution_result.execution_time_ms,
+                        memory_usage_mb=execution_result.memory_usage_mb,
+                        error_type="TestError",
+                        error_traceback=test_result.error,
+                    )
+
+            # NOTE: The evaluator now receives test errors (but not expected values)
+            # so it can make informed RETRY decisions for runtime errors.
+
             # Evaluator
+            self._notify_phase("evaluator", iteration_id)
             evaluator_input = EvaluatorInput(
                 user_question=user_question,
                 plan=plan,
@@ -213,6 +250,7 @@ class MultiAgentOrchestrator:
                 previous_evaluations=[
                     it.evaluation for it in session.iterations if it.evaluation
                 ],
+                test_result=test_result,  # Pass test result for informed retry decisions
             )
             evaluator_output = await with_retry(
                 lambda: self.evaluator.invoke(evaluator_input),
@@ -327,12 +365,12 @@ class MultiAgentOrchestrator:
         )
 
     def _create_error_result(
-        self, session: SessionState, start_time: float
+        self, session: SessionState, error: Exception, start_time: float
     ) -> OrchestratorResult:
         session.termination_reason = TerminationReason.FATAL_ERROR
         return OrchestratorResult(
             success=False,
-            final_answer="Error occurred",
+            final_answer=f"Error: {error}",
             final_code=None,
             session_id=session.session_id,
             iterations_used=session.current_iteration,
@@ -355,6 +393,14 @@ class MultiAgentOrchestrator:
             total_time_seconds=time.time() - start_time,
             session_state=session,
         )
+
+    def _notify_phase(self, phase: str, iteration_id: int) -> None:
+        if self._progress_callback:
+            try:
+                self._progress_callback(phase, iteration_id)
+            except Exception:
+                # Don't let callback failures break orchestrator
+                pass
 
 
 __all__ = ["MultiAgentOrchestrator"]

@@ -258,3 +258,75 @@ async def test_rag_retrieval_added_to_state(tmp_path: Path):
     assert result.session_state.total_rag_calls == 1
     assert len(result.session_state.all_retrieved_docs) == 1
 
+
+class StubTestVerifier:
+    """Test verifier that fails on first call, succeeds on second."""
+    def __init__(self):
+        self.calls = 0
+
+    def verify(self, code: str):
+        from orchestrator.test_verifier import TestResult
+        self.calls += 1
+        if self.calls == 1:
+            return TestResult(passed=False, error="TypeError: unexpected keyword argument 'order'")
+        return TestResult(passed=True, error=None)
+
+
+@pytest.mark.asyncio
+async def test_retry_on_test_failure(tmp_path: Path):
+    """Test that orchestrator retries when test_verifier returns an error."""
+    planner = StubPlanner(plan=_simple_plan())
+    code_agent = StubCodeAgent(code="# code")
+    executor = ExecutorAgentImpl(sandbox=StubSandbox(success=True))
+    
+    # Evaluator that returns RETRY on first call (when test fails), SUCCESS on second
+    first_eval = StubEvaluator(decision=Decision.RETRY, feedback="Fix the TypeError")
+    second_eval = StubEvaluator(decision=Decision.SUCCESS)
+
+    class SwitchEval:
+        def __init__(self):
+            self.calls = 0
+
+        async def invoke(self, input):
+            self.calls += 1
+            if self.calls == 1:
+                return await first_eval.invoke(input)
+            return await second_eval.invoke(input)
+
+        @property
+        def name(self):
+            return "evaluator"
+
+        def get_system_prompt(self):
+            return ""
+
+    evaluator = SwitchEval()
+    rag = StubRAG()
+    state_manager = StateManager(base_dir=tmp_path)
+    test_verifier = StubTestVerifier()
+    
+    orchestrator = MultiAgentOrchestrator(
+        planner=planner,
+        code_agent=code_agent,
+        executor=executor,
+        evaluator=evaluator,  # type: ignore[arg-type]
+        rag_retriever=rag,
+        state_manager=state_manager,
+        config=OrchestratorConfig(max_iterations=3),
+        test_verifier=test_verifier,
+    )
+
+    result = await orchestrator.run("Q")
+    
+    # Verify retry happened
+    assert len(result.session_state.iterations) == 2
+    assert result.iterations_used == 2
+    assert result.termination_reason == TerminationReason.SUCCESS
+    
+    # Verify test_verifier was called twice
+    assert test_verifier.calls == 2
+    
+    # Verify first iteration had execution error from test failure
+    first_iter = result.session_state.iterations[0]
+    assert first_iter.execution_result.success is False
+    assert "TypeError" in first_iter.execution_result.stderr

@@ -51,7 +51,9 @@ class CodeAgentImpl(CodeAgent):
 
     def _build_user_message(self, input: CodeAgentInput) -> str:
         parts = [
-            "## Plan",
+            "## User Question (PRESERVE EXACT FUNCTION SIGNATURE)",
+            input.user_question,
+            "\n## Plan",
             str(input.plan.to_dict()),
             "\n## Requirements",
             "\n".join(input.code_requirements),
