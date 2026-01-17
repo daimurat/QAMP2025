@@ -17,6 +17,7 @@ from datasets import load_dataset
 from dotenv import load_dotenv
 
 from workflows.deep_thought import run_deep_thought_mode
+from workflows.fast import run_fast_mode
 
 # ----------------------------
 # CLI & defaults
@@ -26,6 +27,7 @@ def build_cli() -> argparse.Namespace:
         description="Evaluate an OpenAI model on QiskitHumanEval with RAG support.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
+    p.add_argument("--mode", default="fast", choices=["fast", "deep"])
     p.add_argument("--model", default=os.getenv("GROQ_EVAL_MODEL", "meta-llama/llama-4-maverick-17b-128e-instruct"),
                    help="Groq model id (e.g., moonshotai/kimi-k2-instruct-0905).")
     p.add_argument("--dataset", default="Qiskit/qiskit_humaneval",
@@ -227,7 +229,10 @@ def evaluate(args: argparse.Namespace) -> None:
             # Generate code
             try:
                 print("  Generating code...")
-                raw_text, latency = run_deep_thought_mode(t.prompt)
+                if args.mode == "fast":
+                    raw_text, latency = run_fast_mode(t.prompt)
+                elif args.mode == "deep":    
+                    raw_text, latency = run_deep_thought_mode(t.prompt)
             except RuntimeError as e:
                 print(f"  LLM error: {e}")
                 raw_text, latency = "", 0.0
