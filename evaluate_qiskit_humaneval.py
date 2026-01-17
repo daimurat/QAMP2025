@@ -74,7 +74,6 @@ class Result:
     difficulty_scale: Optional[str]
     model: str
     file_path: str
-    rag_chunks_used: int
 
 # ----------------------------
 # Utility: file safe writing
@@ -125,9 +124,9 @@ if __name__ == "__main__":
         print("___QHE_FAIL___:" + repr(e))
 """
 
-def run_in_subprocess(code: str, timeout_sec: int) -> Tuple[bool, Optional[str]]:
+def run_in_subprocess(code: str) -> Tuple[bool, Optional[str]]:
     """
-    Execute the provided code string in a fresh Python subprocess with a timeout.
+    Execute the provided code string in a fresh Python subprocess.
     Returns (passed, error_str_if_any).
 
     We deliberately avoid importing this code in the current process.
@@ -142,12 +141,11 @@ def run_in_subprocess(code: str, timeout_sec: int) -> Tuple[bool, Optional[str]]
                 [sys.executable, "-I", "-B", str(src)],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                timeout=timeout_sec,
                 text=True,
                 env=os.environ.copy(),
             )
         except subprocess.TimeoutExpired:
-            return False, f"Timeout({timeout_sec}s)"
+            return False, f"Timeout"
         except Exception as e:
             return False, f"SubprocessError: {e!r}"
 
@@ -202,8 +200,7 @@ def load_tasks(
 
 def evaluate(args: argparse.Namespace) -> None:
     run_ts = now_stamp()
-    rag_suffix = "_rag" if args.use_rag else "_norag"
-    out_root = Path(args.outdir) / f"{Path(args.dataset).name}_{run_ts}_{args.model.replace('/', '_')}{rag_suffix}"
+    out_root = Path(args.outdir) / f"{Path(args.dataset).name}_{run_ts}_{args.model.replace('/', '_')}"
     gens_dir = out_root / "generations"
     ensure_dir(gens_dir)
     print(f"✓ Output directory: {out_root}\n")
@@ -220,7 +217,6 @@ def evaluate(args: argparse.Namespace) -> None:
         gen_path = gens_dir / f"{t.idx:03d}_{t.entry_point}.py"
 
         # 1) Get / reuse generation
-        chunks_used = 0  # Track how many RAG chunks were used
         if args.dry_run and gen_path.exists():
             completion_text = gen_path.read_text(encoding="utf-8")
             latency = 0.0
@@ -252,7 +248,7 @@ def evaluate(args: argparse.Namespace) -> None:
         # 3) Execute tests
         print("  Executing tests...")
         t0 = time.time()
-        passed, err = run_in_subprocess(program, timeout_sec=args.timeout_sec)
+        passed, err = run_in_subprocess(program)
         exec_latency = time.time() - t0
 
         # 4) Record result
@@ -267,7 +263,6 @@ def evaluate(args: argparse.Namespace) -> None:
             difficulty_scale=t.difficulty_scale,
             model=args.model,
             file_path=str(gen_path),
-            rag_chunks_used=chunks_used,
         )
         results.append(res)
         status = "✓ PASS" if passed else f"✗ FAIL"
@@ -295,8 +290,7 @@ def evaluate(args: argparse.Namespace) -> None:
         "dataset": args.dataset,
         "split": args.split,
         "timestamp": run_ts,
-        "rag_enabled": args.use_rag,
-        "rag_top_k": args.rag_top_k if args.use_rag else None,
+        "rag_top_k": args.rag_top_k,
         "temperature": args.temperature,
         "pass_at_1": pass_at_1,
         "passed": passed_n,
