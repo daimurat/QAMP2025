@@ -1,33 +1,16 @@
-import os
-from autogen import ConversableAgent, LLMConfig
-from tools.retrieval_tool import RetrievalTool
+import time
+from agents import create_assistant_agent
+from tools.rag_tools import retrieve_qiskit_docs
 
-def _read_prompt_from_file(path):
-    with open(path, 'r') as f:
-        return f.read()
-
-def run_fast_mode(user_input: str, vector_store):
-    # 1. Load Config
-    Initial_Agent_Instructions = _read_prompt_from_file("prompts/qiskit_instructions.txt") # Reuse or adapt qiskit_instructions
-
-    # Define agent (LLM)
-    llm_config = LLMConfig(
-        config_list={
-            "api_type": "openai",
-            "model": "gpt-4.1-mini",
-            "api_key": os.getenv("OPENAI_API_KEY")
-        }
-    )
-
-    qiskit_agent = ConversableAgent(
-        name = "qiskit_agent",
-        system_message=Initial_Agent_Instructions,
-        llm_config=llm_config
-    )
+def run_fast_mode(user_input: str):
+    # Define agent
+    qiskit_agent = create_assistant_agent("qiskit_developer")
 
     # retrieve context
-    retrieval_tool = RetrievalTool(vector_store)
-    context = retrieval_tool.retrieve(user_input)
+    context = retrieve_qiskit_docs(user_input)
+
+    # Start timing
+    start_time = time.time()
 
     response = qiskit_agent.run(
         max_turns=1,
@@ -36,5 +19,8 @@ def run_fast_mode(user_input: str, vector_store):
 
     response.process()
     
+    # Calculate elapsed time
+    latency = time.time() - start_time
+
     messages_list = list(response.messages)
-    return messages_list[-1].get("content")
+    return messages_list[-1].get("content"), latency
