@@ -71,3 +71,23 @@ system_message: |
   3. Apply CNOT gate between qubits 0 and 1 for entanglement
   4. Add measurements to all qubits
   5. Expected result: Bell state with 50% |00⟩ and 50% |11⟩
+
+  TERMINATION BEHAVIOR:
+  - Once QiskitDeveloper has generated working code (exitcode: 0), say "TERMINATE" immediately
+  - Do NOT provide additional reviews, summaries, or checklists after code is generated
+  - Do NOT say things like "If you need anything else..." or "Feel free to ask..."
+  - Your job is DONE once valid code exists - end the conversation promptly
+
+  SIGNATURE AND IMPORT PRESERVATION:
+  - If the prompt imports a specific class (e.g., LinearFunction, Clifford), prefer returning an instance of that class directly
+  - Do NOT wrap imported types in QuantumCircuit unless the prompt explicitly asks for a circuit
+  - The imports in the prompt are a STRONG HINT about the expected return type
+  - Example: If prompt imports `LinearFunction`, return `LinearFunction(matrix)` not `QuantumCircuit.append(LinearFunction(matrix))`
+  - When RAG results show patterns that conflict with the prompt's imports, TRUST THE IMPORTS
+
+  RAG QUERY LIMITS:
+  - You have a MAXIMUM of 3 RAG queries per task
+  - If your first 2 queries don't find the exact function/class you need, STOP querying and proceed
+  - When you see "RAG query limit reached", immediately proceed with the plan using your existing knowledge
+  - Do NOT keep retrying the same query with different wordings
+  - It's better to give a plan based on general Qiskit knowledge than to waste queries

@@ -17,6 +17,7 @@ from datasets import load_dataset
 from dotenv import load_dotenv
 
 from workflows.deep_thought import run_deep_thought_mode
+from utils.trace_logger import TraceLogger, ModelConfig
 
 # ----------------------------
 # CLI & defaults
@@ -201,7 +202,9 @@ def evaluate(args: argparse.Namespace) -> None:
     rag_suffix = "_rag" if args.use_rag else "_norag"
     out_root = Path(args.outdir) / f"{Path(args.dataset).name}_{run_ts}_{args.model.replace('/', '_')}{rag_suffix}"
     gens_dir = out_root / "generations"
+    traces_dir = out_root / "traces"
     ensure_dir(gens_dir)
+    ensure_dir(traces_dir)
 
     # Load tasks
     tasks = load_tasks(args.dataset, args.split, args.max_items, args.difficulty, args.task_id)
@@ -210,6 +213,7 @@ def evaluate(args: argparse.Namespace) -> None:
     print(f"✓ RAG: {'enabled' if args.use_rag else 'disabled'}")
     if args.use_rag:
         print(f"✓ RAG debug log: {out_root / 'rag_debug.log'}")
+    print(f"✓ Traces directory: {traces_dir}")
     print(f"✓ Output directory: {out_root}\n")
 
     openai_key = os.getenv("OPENAI_API_KEY")
@@ -233,11 +237,26 @@ def evaluate(args: argparse.Namespace) -> None:
 
         # 1) Get / reuse generation
         chunks_used = 0  # Track how many RAG chunks were used
+        trace_logger = None  # Will be created for non-dry runs
+        
         if args.dry_run and gen_path.exists():
             completion_text = gen_path.read_text(encoding="utf-8")
             latency = 0.0
             print("  (dry-run) Loaded cached completion.")
         else:
+            # Create TraceLogger for this task
+            model_config = ModelConfig(
+                model=args.model,
+                temperature=args.temperature,
+                api_type="openai"
+            )
+            trace_logger = TraceLogger(
+                task_id=t.task_id,
+                entry_point=t.entry_point,
+                prompt=t.prompt,
+                model_config=model_config
+            )
+            
             # Generate code with retry logic
             raw_text = None
             latency = 0.0
@@ -251,6 +270,7 @@ def evaluate(args: argparse.Namespace) -> None:
                         selected_model=args.model,
                         api_key_openai=openai_key,
                         api_key_openrouter=openrouter_key,
+                        trace_logger=trace_logger,
                     )
                     # Check if we got valid output
                     if raw_text and raw_text.strip():
@@ -273,6 +293,9 @@ def evaluate(args: argparse.Namespace) -> None:
             completion_text = extract_code_only(raw_text) if raw_text else ""
             gen_path.write_text(completion_text, encoding="utf-8")
             print(f"  Generated {len(completion_text)} chars in {latency:.2f}s")
+            
+            # Update trace logger with chunks used count
+            chunks_used = len(trace_logger.trace.rag_queries)
 
         # 2) Build executable combined program
         program = EXEC_TEMPLATE.format(
@@ -314,11 +337,22 @@ def evaluate(args: argparse.Namespace) -> None:
         passed_so_far = sum(1 for r in results if r.passed)
         failed_so_far = len(results) - passed_so_far
         with progress_path.open("a", encoding="utf-8") as pf:
-            pf.write(f"[{t.idx+1:03d}/{len(tasks)}] {status} | {t.entry_point}\n")
+            pf.write(f"[{t.task_id}] ({t.idx+1}/{len(tasks)}) {status} | {t.entry_point}\n")
             if not passed and err:
                 pf.write(f"         Error: {err[:100]}...\n")
             pf.write(f"         Running: {passed_so_far} passed, {failed_so_far} failed "
                      f"({100*passed_so_far/len(results):.1f}% pass rate)\n\n")
+        
+        # Save trace if available
+        if trace_logger:
+            trace_logger.set_result(
+                final_code=completion_text,
+                latency_s=latency,
+                passed=passed,
+                error=err
+            )
+            trace_dir = trace_logger.save(traces_dir)
+            print(f"  Trace saved: {trace_dir}")
 
     # ---------------- Summary & persistence ----------------
     passed_n = sum(1 for r in results if r.passed)

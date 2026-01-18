@@ -1,12 +1,18 @@
 import time
 import os
 import re
+from typing import TYPE_CHECKING
 from autogen import LLMConfig
 from autogen.agentchat import initiate_group_chat
 from autogen.agentchat.group.patterns import AutoPattern
 from autogen.code_utils import extract_code
 from agents import create_assistant_agent, create_user_proxy_agent
 from tools import retrieve_qiskit_docs
+from tools.rag_tools import reset_rag_query_count
+from utils.trace_logger import set_rag_trace_callback, clear_rag_trace_callback
+
+if TYPE_CHECKING:
+    from utils.trace_logger import TraceLogger
 from config.constants import (
     GPT_MODELS,
     OPENROUTER_MODELS,
@@ -39,8 +45,13 @@ def _build_llm_settings(selected_model: str | None, api_key_openai: str | None, 
     }
 
 
-def run_deep_thought_mode(user_input: str, selected_model: str | None = None, api_key_openai: str | None = None,
-                          api_key_openrouter: str | None = None):
+def run_deep_thought_mode(
+    user_input: str,
+    selected_model: str | None = None,
+    api_key_openai: str | None = None,
+    api_key_openrouter: str | None = None,
+    trace_logger: "TraceLogger | None" = None
+):
     """
     Run the deep thought mode with improved agent topology.
     
@@ -51,46 +62,103 @@ def run_deep_thought_mode(user_input: str, selected_model: str | None = None, ap
     
     Flow:
     User Input → Planner_proxy → PlannerAgent → Developer_proxy → QiskitDeveloper → execute_code → Result
+    
+    Args:
+        user_input: The prompt/task for the agents
+        selected_model: Model to use (optional)
+        api_key_openai: OpenAI API key (optional)
+        api_key_openrouter: OpenRouter API key (optional)
+        trace_logger: TraceLogger instance for observability (optional)
+    
+    Returns:
+        tuple: (generated_code, latency_seconds)
     """
-
-    llm_settings = _build_llm_settings(selected_model, api_key_openai, api_key_openrouter)
-    llm_config = LLMConfig(config_list=llm_settings)
-   
-    # Create function map for RAG tools
-    function_map = {
-        "retrieve_qiskit_docs": retrieve_qiskit_docs,
-    }
-   
-    # Create agents from external configuration files
-    planner = create_assistant_agent("planner", function_map=function_map, llm_overrides=llm_settings)
-    qiskit_developer = create_assistant_agent("qiskit_developer", llm_overrides=llm_settings)
+    # Reset RAG query counter for this task (limits to 3 queries)
+    reset_rag_query_count()
     
-    # Create proxy with function map for tool execution
-    developer_proxy = create_user_proxy_agent("qiskit_developer_proxy")
-    
-    # Define agents communication pattern
-    pattern = AutoPattern(
-        initial_agent=planner,
-        agents=[planner, qiskit_developer],
-        user_agent=developer_proxy,
-        group_manager_args={"llm_config": llm_config},
-    )
+    # Set up RAG trace callback if trace_logger is provided
+    if trace_logger:
+        def rag_callback(query: str, top_k: int, min_score: float, chunks: list):
+            trace_logger.add_rag_query(query, top_k, min_score, chunks)
+        set_rag_trace_callback(rag_callback)
 
-    # Start timing
-    start_time = time.time()
+    try:
+        llm_settings = _build_llm_settings(selected_model, api_key_openai, api_key_openrouter)
+        llm_config = LLMConfig(config_list=llm_settings)
+       
+        # Create function map for RAG tools
+        function_map = {
+            "retrieve_qiskit_docs": retrieve_qiskit_docs,
+        }
+       
+        # Create agents from external configuration files
+        planner = create_assistant_agent("planner", function_map=function_map, llm_overrides=llm_settings)
+        qiskit_developer = create_assistant_agent("qiskit_developer", llm_overrides=llm_settings)
+        
+        # Create proxy with function map for tool execution
+        developer_proxy = create_user_proxy_agent("qiskit_developer_proxy")
+        
+        # Define agents communication pattern
+        # Simple termination: allow TERMINATE once code is generated
+        class ExecutionAwareTermination:
+            """Allow termination after code is generated or execution feedback is received."""
+            
+            def __init__(self):
+                self.code_generated = False
+            
+            def __call__(self, msg):
+                content = msg.get("content") or ""
+                name = msg.get("name") or ""
+                
+                # Track if QiskitDeveloper generated code (code block present)
+                if name == "QiskitDeveloper" and "```python" in content:
+                    self.code_generated = True
+                
+                # Track if execution feedback received (also acceptable)
+                if "exitcode:" in content.lower():
+                    self.code_generated = True  # Execution means code was handled
+                
+                # Allow termination if TERMINATE is in message AND code was generated
+                if "TERMINATE" in content:
+                    return self.code_generated
+                
+                return False
+        
+        termination_checker = ExecutionAwareTermination()
+        
+        pattern = AutoPattern(
+            initial_agent=planner,
+            agents=[planner, qiskit_developer],
+            user_agent=developer_proxy,
+            group_manager_args={
+                "llm_config": llm_config,
+                "is_termination_msg": termination_checker,
+            },
+        )
 
-    result, context_variables, last_agent = initiate_group_chat(
-        pattern=pattern,
-        messages=user_input
-    )
-    
-    # Calculate elapsed time
-    latency = time.time() - start_time
-    
-    # Extract qiskit code with improved logic
-    qiskit_code = _extract_best_code(result.chat_history)
+        # Start timing
+        start_time = time.time()
 
-    return qiskit_code, latency
+        result, context_variables, last_agent = initiate_group_chat(
+            pattern=pattern,
+            messages=user_input
+        )
+        
+        # Calculate elapsed time
+        latency = time.time() - start_time
+        
+        # Capture chat history in trace logger if provided
+        if trace_logger:
+            trace_logger.capture_from_chat_history(result.chat_history)
+        
+        # Extract qiskit code with improved logic
+        qiskit_code = _extract_best_code(result.chat_history)
+
+        return qiskit_code, latency
+    
+    finally:
+        # Always clear the RAG trace callback
+        clear_rag_trace_callback()
 
 
 def _extract_best_code(chat_history: list) -> str | None:
