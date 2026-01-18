@@ -9,11 +9,9 @@ os.environ["TRANSFORMERS_CACHE"] = "/tmp/hf_cache"
 import streamlit as st
 from dotenv import load_dotenv
 
-from utils.session_state import SessionStateManager
-from utils.styles import inject_global_styles_and_font, render_header
-from components.sidebar import render_sidebar
-from components.chat_interface import render_chat_interface
-from components.welcome_message import render_welcome_message
+from src.utils.session_state import SessionStateManager
+# from utils.styles import inject_global_styles_and_font, render_header
+from src.presentation.components import inject_global_styles_and_font, render_header, sidebar, chat_interface, welcome_message
 
 
 # page configuration
@@ -35,10 +33,10 @@ inject_global_styles_and_font("Jersey 10")
 render_header()
 
 # sidebar display
-api_key, api_key_gai = render_sidebar()
+api_key, api_key_gai = sidebar.render_sidebar()
 
 # chat interface display
-render_chat_interface()
+chat_interface.render_chat_interface()
 
 # welcome message display
-render_welcome_message(api_key, api_key_gai)
+welcome_message.render_welcome_message(api_key, api_key_gai)

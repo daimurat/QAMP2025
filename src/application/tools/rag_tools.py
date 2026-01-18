@@ -6,7 +6,8 @@ for use with AutoGen's function calling feature.
 """
 
 from typing import Annotated
-from rag import RAGRetriever
+from config.constants import RAG_DB_PATH
+from src.rag import RAGRetriever
 
 # Global retriever instance (initialized once, reused across calls)
 _retriever = None
@@ -21,7 +22,7 @@ def get_retriever() -> RAGRetriever:
     """
     global _retriever
     if _retriever is None:
-        _retriever = RAGRetriever(db_path="QAMP/data/qamp.db")
+        _retriever = RAGRetriever(db_path=RAG_DB_PATH)
     return _retriever
 
 

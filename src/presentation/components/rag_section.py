@@ -5,7 +5,7 @@ Uses SQLite vector database with Gemini embeddings.
 """
 import streamlit as st
 import os
-from rag import RAGRetriever
+from src.rag import RAGRetriever
 from config.constants import RAG_DB_PATH
 
 

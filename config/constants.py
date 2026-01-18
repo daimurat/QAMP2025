@@ -7,7 +7,7 @@ GPT_MODELS = ["gpt-4o-mini", "gpt-4o", "gpt-4.1"]
 GEMINI_MODELS = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"]
 
 # RAG Configuration
-RAG_DB_PATH = "QAMP/data/qamp.db"
+RAG_DB_PATH = "data/qamp.db"
 RAG_EMBED_MODEL = "gemini-embedding-001"
 RAG_DEFAULT_TOP_K = 5
 

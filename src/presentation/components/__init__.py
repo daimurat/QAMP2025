@@ -1,8 +1,7 @@
 """
-UI Styling Utilities
+CLAPP UI Components
 """
 import streamlit as st
-
 
 def inject_global_styles_and_font(font_name: str):
     """Inject global styles and font

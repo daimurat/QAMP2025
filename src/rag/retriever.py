@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 # Add QAMP to path so we can import from scripts.common
-_qamp_path = Path(__file__).parent.parent / "QAMP"
+_qamp_path = Path(__file__).parent.parent
 if str(_qamp_path) not in sys.path:
     sys.path.insert(0, str(_qamp_path))
 
@@ -26,7 +26,7 @@ from scripts.common import (
 
 
 # Default paths relative to project root
-DEFAULT_DB_PATH = Path(__file__).parent.parent / "QAMP" / "data" / "qamp.db"
+DEFAULT_DB_PATH = Path(__file__).parent.parent/ "data" / "qamp.db"
 
 
 class RAGRetriever:
@@ -54,7 +54,7 @@ class RAGRetriever:
         Initialize the RAG retriever.
         
         Args:
-            db_path: Path to SQLite database. Defaults to QAMP/data/qamp.db
+            db_path: Path to SQLite database. Defaults to data/qamp.db
             embed_model: Embedding model name. Must match the model used to build the DB.
         """
         if db_path is None:

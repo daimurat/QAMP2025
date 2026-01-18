@@ -1,13 +1,12 @@
 import time
-from agents import create_assistant_agent
-from tools.rag_tools import retrieve_qiskit_docs
+from src.application import agents, tools
 
 def run_fast_mode(user_input: str):
     # Define agent
-    qiskit_agent = create_assistant_agent("qiskit_developer")
+    qiskit_agent = agents.create_assistant_agent("qiskit_developer")
 
     # retrieve context
-    context = retrieve_qiskit_docs(user_input)
+    context = tools.retrieve_qiskit_docs(user_input)
 
     # Start timing
     start_time = time.time()

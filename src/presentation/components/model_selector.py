@@ -2,7 +2,7 @@
 Model Selection Component
 """
 import streamlit as st
-from utils.session_state import SessionStateManager
+from src.utils.session_state import SessionStateManager
 from config.constants import GPT_MODELS, GEMINI_MODELS, RESPONSE_MODES
 
 

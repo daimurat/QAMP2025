@@ -2,9 +2,8 @@
 Chat Interface Component
 """
 import streamlit as st
-from utils.helpers import Response
-from workflows.deep_thought import run_deep_thought_mode
-from workflows.fast import run_fast_mode
+from src.utils.helpers import Response
+from src.application import workflows
 from config.constants import RESPONSE_MODES
 
 
@@ -20,21 +19,14 @@ def render_chat_interface():
 def _get_initial_msg():
     # check if API key and vector store are available
     has_api_key = st.session_state.get("saved_api_key") or st.session_state.get("saved_api_key_gai")
-    has_vector_store = st.session_state.get("vector_store") is not None
     
-    if has_api_key and has_vector_store:
+    if has_api_key:
         return st.chat_input("Type your prompt here...")
     else:
         if not has_api_key:
             st.markdown("""
                 <div style="text-align: center; font-size: 1.5rem; font-weight: 600; margin-top: 1rem;">
                     Please enter an API key to use the app
-                </div>
-            """, unsafe_allow_html=True)
-        elif not has_vector_store:
-            st.markdown("""
-                <div style="text-align: center; font-size: 1.5rem; font-weight: 600; margin-top: 1rem;">
-                    Please generate an embedding before using the app
                 </div>
             """, unsafe_allow_html=True)
         return None
@@ -64,11 +56,10 @@ def _process_user_input(user_input: str):
         mode = st.session_state.get("mode_is_fast", RESPONSE_MODES["FAST"])
         if mode == RESPONSE_MODES["FAST"]:
             # run fast mode
-            result = run_fast_mode(user_input, st.session_state.vector_store)
+            result, latency = workflows.run_fast_mode(user_input)
             response = Response(content=result)
         if mode == RESPONSE_MODES["DEEP"]:
-            # TODO: Implement Deep Thought Mode
-            result = run_deep_thought_mode(user_input)
+            result, latency = workflows.run_deep_thought_mode(user_input)
             response = Response(content=result)
 
         st.markdown(response.content)

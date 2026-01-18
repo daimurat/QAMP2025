@@ -4,7 +4,7 @@ API Key Management Component
 import streamlit as st
 import os
 import time
-from utils.encryption import save_encrypted_key, load_encrypted_key, create_fernet
+from src.utils import encryption
 from config.constants import GPT_MODELS, GEMINI_MODELS
 
 
@@ -53,18 +53,18 @@ def _render_save_button(username_display, user_password, openai_loaded, gemini_l
     if (openai_loaded or gemini_loaded) and user_password and username_display and \
        (not openai_file_exists or not gemini_file_exists):
         if st.button("💾 Save API Key(s) as encrypted file"):
-            fernet = create_fernet(user_password)
+            fernet = encryption.create_fernet(user_password)
             try:
                 if openai_loaded and not openai_file_exists:
                     encrypted_key = fernet.encrypt(st.session_state.saved_api_key.encode())
-                    if save_encrypted_key(encrypted_key.decode(), username_display):
+                    if encryption.save_encrypted_key(encrypted_key.decode(), username_display):
                         st.success("OpenAI API key encrypted and saved! ✅")
                     else:
                         st.warning("OpenAI API key encrypted but couldn't save to file! ⚠️")
                 
                 if gemini_loaded and not gemini_file_exists:
                     encrypted_key_gai = fernet.encrypt(st.session_state.saved_api_key_gai.encode())
-                    if save_encrypted_key(encrypted_key_gai.decode(), username_display+'_gai'):
+                    if encryption.save_encrypted_key(encrypted_key_gai.decode(), username_display+'_gai'):
                         st.success("Gemini API key encrypted and saved! ✅")
                     else:
                         st.warning("Gemini API key encrypted but couldn't save to file! ⚠️")
@@ -79,18 +79,18 @@ def _render_load_button(username, user_password, username_display,
         if not username or not user_password:
             st.error("Please enter both username and password to load saved API key(s).")
         else:
-            fernet = create_fernet(user_password)
+            fernet = encryption.create_fernet(user_password)
             error = False
             try:
                 if openai_file_exists:
-                    encrypted_key = load_encrypted_key(username_display)
+                    encrypted_key = encryption.load_encrypted_key(username_display)
                     if encrypted_key:
                         decrypted_key = fernet.decrypt(encrypted_key.encode()).decode()
                         st.session_state.saved_api_key = decrypted_key
                         st.success("OpenAI API key loaded from encrypted file! 🔑")
                 
                 if gemini_file_exists:
-                    encrypted_key_gai = load_encrypted_key(username_display+'_gai')
+                    encrypted_key_gai = encryption.load_encrypted_key(username_display+'_gai')
                     if encrypted_key_gai:
                         decrypted_key_gai = fernet.decrypt(encrypted_key_gai.encode()).decode()
                         st.session_state.saved_api_key_gai = decrypted_key_gai

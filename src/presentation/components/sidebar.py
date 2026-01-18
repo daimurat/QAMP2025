@@ -2,10 +2,7 @@
 Sidebar Component - Integrates all sidebar sections
 """
 import streamlit as st
-from components.api_management import render_api_management
-from components.model_selector import render_model_selector
-from components.rag_section import render_rag_section
-
+from src.presentation.components import api_management, model_selector, rag_section
 
 def render_sidebar():
     """Render sidebar
@@ -15,16 +12,16 @@ def render_sidebar():
     """
     with st.sidebar:
         # API management section
-        api_key, api_key_gai = render_api_management()
+        api_key, api_key_gai = api_management.render_api_management()
         
         st.markdown("---")
         
         # model selection section
-        render_model_selector(api_key, api_key_gai)
+        model_selector.render_model_selector(api_key, api_key_gai)
         
         st.markdown("---")
         
         # RAG section
-        render_rag_section()
+        rag_section.render_rag_section()
     
     return api_key, api_key_gai

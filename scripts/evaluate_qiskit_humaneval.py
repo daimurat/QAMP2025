@@ -16,8 +16,8 @@ from typing import Optional, Tuple, List
 from datasets import load_dataset
 from dotenv import load_dotenv
 
-from workflows.deep_thought import run_deep_thought_mode
-from workflows.fast import run_fast_mode
+from src.application.workflows.deep_thought import run_deep_thought_mode
+from src.application.workflows.fast import run_fast_mode
 
 # ----------------------------
 # CLI & defaults

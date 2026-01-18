@@ -5,7 +5,7 @@ import streamlit as st
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
-from utils.helpers import StreamHandler, read_prompt_from_file
+from src.utils.helpers import StreamHandler, read_prompt_from_file
 from config.constants import GEMINI_MODELS, PROMPT_PATHS
 
 
