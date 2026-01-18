@@ -19,7 +19,11 @@ def render_chat_interface():
 
 def _get_initial_msg():
     # check if API key and vector store are available
-    has_api_key = st.session_state.get("saved_api_key") or st.session_state.get("saved_api_key_gai")
+    has_api_key = (
+        st.session_state.get("saved_api_key") or
+        st.session_state.get("saved_api_key_gai") or
+        st.session_state.get("saved_api_key_openrouter")
+    )
     has_vector_store = st.session_state.get("vector_store") is not None
     
     if has_api_key and has_vector_store:
@@ -64,11 +68,22 @@ def _process_user_input(user_input: str):
         mode = st.session_state.get("mode_is_fast", RESPONSE_MODES["FAST"])
         if mode == RESPONSE_MODES["FAST"]:
             # run fast mode
-            result = run_fast_mode(user_input, st.session_state.vector_store)
+            result = run_fast_mode(
+                user_input=user_input,
+                vector_store=st.session_state.vector_store,
+                selected_model=st.session_state.selected_model,
+                api_key_openai=st.session_state.get("saved_api_key"),
+                api_key_openrouter=st.session_state.get("saved_api_key_openrouter"),
+            )
             response = Response(content=result)
         if mode == RESPONSE_MODES["DEEP"]:
             # TODO: Implement Deep Thought Mode
-            result = run_deep_thought_mode(user_input)
+            result = run_deep_thought_mode(
+                user_input=user_input,
+                selected_model=st.session_state.selected_model,
+                api_key_openai=st.session_state.get("saved_api_key"),
+                api_key_openrouter=st.session_state.get("saved_api_key_openrouter"),
+            )
             response = Response(content=result)
 
         st.markdown(response.content)

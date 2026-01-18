@@ -20,6 +20,7 @@ class SessionStateManager:
         "greeted": False,
         "debug_messages": [],
         "saved_api_key": None,
+        "saved_api_key_openrouter": None,
         "saved_api_key_gai": None,
         "agents": None,
         "llm_initialized": False,
@@ -70,7 +71,7 @@ class SessionStateManager:
     @staticmethod
     def clear_api_keys():
         """Clear API key-related states"""
-        for key in ["saved_api_key", "saved_api_key_gai", "encrypted_key", "encrypted_key_gai"]:
+        for key in ["saved_api_key", "saved_api_key_openrouter", "saved_api_key_gai", "encrypted_key", "encrypted_key_or", "encrypted_key_gai"]:
             if key in st.session_state:
                 del st.session_state[key]
 

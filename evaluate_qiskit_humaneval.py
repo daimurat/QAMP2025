@@ -212,7 +212,20 @@ def evaluate(args: argparse.Namespace) -> None:
         print(f"✓ RAG debug log: {out_root / 'rag_debug.log'}")
     print(f"✓ Output directory: {out_root}\n")
 
+    openai_key = os.getenv("OPENAI_API_KEY")
+    openrouter_key = os.getenv("OPENROUTER_API_KEY")
+
     results: List[Result] = []
+    
+    # Initialize progress tracker
+    progress_path = out_root / "progress.log"
+    with progress_path.open("w", encoding="utf-8") as pf:
+        pf.write(f"# Evaluation Progress - {run_ts}\n")
+        pf.write(f"# Model: {args.model}\n")
+        pf.write(f"# Dataset: {args.dataset} ({len(tasks)} tasks)\n")
+        pf.write(f"# RAG: {'enabled' if args.use_rag else 'disabled'}\n")
+        pf.write("=" * 60 + "\n\n")
+    print(f"✓ Progress tracker: {progress_path}\n")
 
     for t in tasks:
         print(f"=== [{t.idx+1}/{len(tasks)}] {t.task_id} :: {t.entry_point} ===")
@@ -225,15 +238,39 @@ def evaluate(args: argparse.Namespace) -> None:
             latency = 0.0
             print("  (dry-run) Loaded cached completion.")
         else:
-            # Generate code
-            try:
-                print("  Generating code...")
-                raw_text, latency = run_deep_thought_mode(t.prompt)
-            except RuntimeError as e:
-                print(f"  LLM error: {e}")
-                raw_text, latency = "", 0.0
+            # Generate code with retry logic
+            raw_text = None
+            latency = 0.0
+            max_retries = 3
+            
+            for attempt in range(max_retries):
+                try:
+                    print(f"  Generating code (attempt {attempt + 1}/{max_retries})...")
+                    raw_text, latency = run_deep_thought_mode(
+                        t.prompt,
+                        selected_model=args.model,
+                        api_key_openai=openai_key,
+                        api_key_openrouter=openrouter_key,
+                    )
+                    # Check if we got valid output
+                    if raw_text and raw_text.strip():
+                        break
+                    print(f"  Empty response, retrying...")
+                except RuntimeError as e:
+                    print(f"  LLM error (attempt {attempt + 1}): {e}")
+                    if attempt < max_retries - 1:
+                        wait_time = 2 ** attempt  # Exponential backoff
+                        print(f"  Waiting {wait_time}s before retry...")
+                        time.sleep(wait_time)
+                    else:
+                        raw_text = ""
 
-            completion_text = extract_code_only(raw_text)
+            # Handle None from failed extraction
+            if raw_text is None:
+                raw_text = ""
+                print("  WARNING: No code generated after retries")
+            
+            completion_text = extract_code_only(raw_text) if raw_text else ""
             gen_path.write_text(completion_text, encoding="utf-8")
             print(f"  Generated {len(completion_text)} chars in {latency:.2f}s")
 
@@ -272,6 +309,16 @@ def evaluate(args: argparse.Namespace) -> None:
         if not passed and err:
             print(f"  Error: {err[:200]}")
         print()
+        
+        # Append to progress tracker
+        passed_so_far = sum(1 for r in results if r.passed)
+        failed_so_far = len(results) - passed_so_far
+        with progress_path.open("a", encoding="utf-8") as pf:
+            pf.write(f"[{t.idx+1:03d}/{len(tasks)}] {status} | {t.entry_point}\n")
+            if not passed and err:
+                pf.write(f"         Error: {err[:100]}...\n")
+            pf.write(f"         Running: {passed_so_far} passed, {failed_so_far} failed "
+                     f"({100*passed_so_far/len(results):.1f}% pass rate)\n\n")
 
     # ---------------- Summary & persistence ----------------
     passed_n = sum(1 for r in results if r.passed)

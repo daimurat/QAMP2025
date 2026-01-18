@@ -74,7 +74,8 @@ def list_available_agents() -> list:
 
 def create_assistant_agent(
     agent_id: str,
-    function_map: Optional[Dict[str, Callable]] = None
+    function_map: Optional[Dict[str, Callable]] = None,
+    llm_overrides: Optional[Dict[str, Any]] = None
 ) -> AssistantAgent:
     """
     Create an AssistantAgent from configuration file.
@@ -83,6 +84,7 @@ def create_assistant_agent(
         agent_id: Agent identifier (e.g., "planner", "qiskit_developer")
         config_list: LLM configuration (api_type, model, etc.)
         api_key: Optional API key (defaults to OPENAI_API_KEY env var)
+        llm_overrides: Optional dict to override llm_config values (e.g., base_url)
         
     Returns:
         Configured AssistantAgent instance
@@ -98,10 +100,12 @@ def create_assistant_agent(
         )
     
     # Merge base config_list with agent-specific llm_config
-    llm_config = config['llm_config']
+    llm_config = dict(config['llm_config'])
+    if llm_overrides:
+        llm_config.update(llm_overrides)
     
     # Add API key if provided
-    if 'OPENAI_API_KEY' in os.environ:
+    if 'api_key' not in llm_config and 'OPENAI_API_KEY' in os.environ:
         llm_config['api_key'] = os.environ['OPENAI_API_KEY']
     
     # Create AssistantAgent

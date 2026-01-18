@@ -33,12 +33,12 @@ llm_config:
               description: Number of documentation chunks to retrieve (1-20)
               default: 5
               minimum: 1
-              maximum: 20
+              maximum: 10
             min_score:
               type: number
               description: Minimum similarity score threshold (0.0-1.0). Chunks below this are filtered out.
-              default: 0.0
-              minimum: 0.0
+              default: 0.6
+              minimum: 0.6
               maximum: 1.0
           required:
             - query

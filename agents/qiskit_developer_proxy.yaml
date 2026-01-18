@@ -7,7 +7,7 @@ description: |
 
 proxy_config:
   human_input_mode: NEVER
-  max_consecutive_auto_reply: 10
+  max_consecutive_auto_reply: 5
   code_execution_config:
     work_dir: work
     last_n_messages: 1

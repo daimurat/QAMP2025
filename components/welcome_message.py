@@ -1,12 +1,19 @@
 """
 Welcome Message Component
 """
+import os
 import streamlit as st
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from utils.helpers import StreamHandler, read_prompt_from_file
-from config.constants import GEMINI_MODELS, PROMPT_PATHS
+from config.constants import (
+    GEMINI_MODELS,
+    OPENROUTER_MODELS,
+    OPENROUTER_BASE_URL,
+    OPENROUTER_PROVIDER_BODY,
+    PROMPT_PATHS,
+)
 
 
 def render_welcome_message(api_key: str, api_key_gai: str):
@@ -45,13 +52,25 @@ def _initialize_llm(api_key: str, api_key_gai: str, stream_handler):
     if st.session_state.selected_model in GEMINI_MODELS:
         return ChatGoogleGenerativeAI(
             model=st.session_state.selected_model,
+            api_key=st.session_state.get("saved_api_key_gai") or api_key_gai,
             callbacks=[stream_handler],
             temperature=1.0,
             convert_system_message_to_human=True
         )
+    if st.session_state.selected_model in OPENROUTER_MODELS:
+        return ChatOpenAI(
+            model=st.session_state.selected_model,
+            api_key=st.session_state.get("saved_api_key_openrouter") or os.getenv("OPENROUTER_API_KEY"),
+            base_url=OPENROUTER_BASE_URL,
+            extra_body=OPENROUTER_PROVIDER_BODY,
+            streaming=True,
+            callbacks=[stream_handler],
+            temperature=1.0,
+        )
     else:
         return ChatOpenAI(
             model=st.session_state.selected_model,
+            api_key=st.session_state.get("saved_api_key") or api_key or os.getenv("OPENAI_API_KEY"),
             streaming=True,
             callbacks=[stream_handler],
             temperature=1.0
@@ -66,4 +85,3 @@ def _generate_greeting(streaming_llm):
     ]
     
     return streaming_llm.invoke(messages)
-

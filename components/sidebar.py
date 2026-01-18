@@ -11,20 +11,20 @@ def render_sidebar():
     """Render sidebar
     
     Returns:
-        tuple: (api_key, api_key_gai) - OpenAI API key and Gemini API key
+        tuple: (api_key, api_key_gai, api_key_openrouter) - OpenAI, Gemini, and OpenRouter API keys
     """
     with st.sidebar:
         # API management section
-        api_key, api_key_gai = render_api_management()
+        api_key, api_key_gai, api_key_openrouter = render_api_management()
         
         st.markdown("---")
         
         # model selection section
-        render_model_selector(api_key, api_key_gai)
+        render_model_selector(api_key, api_key_gai, api_key_openrouter)
         
         st.markdown("---")
         
         # RAG section
         render_rag_section()
     
-    return api_key, api_key_gai
+    return api_key, api_key_gai, api_key_openrouter
