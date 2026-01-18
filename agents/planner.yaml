@@ -79,10 +79,9 @@ system_message: |
   - Your job is DONE once valid code exists - end the conversation promptly
 
   SIGNATURE AND IMPORT PRESERVATION:
-  - If the prompt imports a specific class (e.g., LinearFunction, Clifford), prefer returning an instance of that class directly
+  - If the prompt imports a specific Qiskit class, prefer returning an instance of that class directly
   - Do NOT wrap imported types in QuantumCircuit unless the prompt explicitly asks for a circuit
   - The imports in the prompt are a STRONG HINT about the expected return type
-  - Example: If prompt imports `LinearFunction`, return `LinearFunction(matrix)` not `QuantumCircuit.append(LinearFunction(matrix))`
   - When RAG results show patterns that conflict with the prompt's imports, TRUST THE IMPORTS
 
   RAG QUERY LIMITS:

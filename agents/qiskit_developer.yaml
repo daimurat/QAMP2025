@@ -33,6 +33,15 @@ system_message: |
   - NEVER output partial snippets - provide the FULL implementation
   - When code runs successfully (exitcode: 0), respond with ONLY: "TERMINATE"
 
+  ⚠️ SAMPLER/ESTIMATOR WARNING (READ THIS FIRST):
+  If prompt imports `from qiskit_ibm_runtime import Sampler/SamplerV2`:
+    - This is SamplerV2 and does NOT accept `backend=AerSimulator()`
+    - For AerSimulator: use `from qiskit.primitives import BackendSamplerV2`
+    - WRONG: `Sampler(backend=AerSimulator())` → TypeError!
+    - RIGHT: `BackendSamplerV2(backend=AerSimulator())`
+  
+  Quick rule: Check the backend type FIRST, then choose the sampler accordingly.
+
   CODE STRUCTURE (follow this exact pattern):
   ```python
   # Required imports
@@ -73,12 +82,10 @@ system_message: |
 
   ## CRITICAL: Import-Based Return Type (Override Planner if needed)
   When determining return type, prioritize the IMPORTS in the original prompt:
-  - If prompt imports `LinearFunction` → return `LinearFunction` object directly
-  - If prompt imports `Clifford` → return `Clifford` object directly
-  - If prompt imports `Operator` → return `Operator` object directly
-  - Do NOT wrap these in `QuantumCircuit` unless the prompt explicitly requires it
+  - If the prompt imports a specific Qiskit class, return an instance of that class directly
+  - Do NOT wrap imported types in `QuantumCircuit` unless the prompt explicitly requires it
   - If Planner's guidance conflicts with the imports, TRUST THE IMPORTS
-  - This is because the test harness expects the type implied by the imports
+  - The test harness expects the type implied by the imports
 
   ## CRITICAL: Return Modified Objects (When No Return Type Specified)
   If the prompt's function signature has NO return type annotation:
@@ -133,8 +140,15 @@ system_message: |
   - `qc = QuantumCircuit(2, 2); qc.measure([0,1], [0,1])` uses default 'c' → access via result.data.c
   - For predictable names, prefer explicit: `qc.measure([0,1], [0,1])` over `measure_all()`
 
-  COMMON MISTAKES:
-  - Do NOT use result[0].data.get_counts() - DataBin has no get_counts() method
-  - Do NOT use bitarray.get_bitstrings(0) - no argument needed
+  ⚠️ COMMON MISTAKES (AVOID THESE):
+  - WRONG: `result = sampler.run([qc])` then `result.get_counts()` → .run() returns a Job, not result!
+  - WRONG: `result.quasi_dists` → V1 pattern, doesn't exist in V2
+  - WRONG: `result.values` → V1 pattern, doesn't exist in V2
+  - WRONG: `result[0].data.get_counts()` → DataBin has no get_counts() method
+  
+  ✅ CORRECT PATTERN:
+    job = sampler.run([circuit], shots=1024)
+    result = job.result()           # MUST call .result() first!
+    counts = result[0].data.c.get_counts()  # Access register, then get_counts
 
 # Made with Bob
