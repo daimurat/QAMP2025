@@ -11,6 +11,10 @@ OPENROUTER_MODELS = [
     "openai/gpt-4.1",
     "openai/gpt-4.1-mini",
     "openai/gpt-oss-120b",
+    "meta-llama/llama-4-maverick",
+    "meta-llama/llama-4-maverick-17b-128e-instruct",
+    "deepseek/deepseek-chat-v3-0324",
+    "qwen/qwen3-235b-a22b-2507",
 ]
 
 # OpenRouter Settings
