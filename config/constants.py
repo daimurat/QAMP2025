@@ -10,6 +10,7 @@ OPENROUTER_MODELS = [
     "openai/gpt-4o",
     "openai/gpt-4.1",
     "openai/gpt-4.1-mini",
+    "openai/gpt-oss-20b",
     "openai/gpt-oss-120b",
     "meta-llama/llama-4-maverick",
     "meta-llama/llama-4-maverick-17b-128e-instruct",

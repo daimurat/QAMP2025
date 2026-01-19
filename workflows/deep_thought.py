@@ -50,7 +50,8 @@ def run_deep_thought_mode(
     selected_model: str | None = None,
     api_key_openai: str | None = None,
     api_key_openrouter: str | None = None,
-    trace_logger: "TraceLogger | None" = None
+    trace_logger: "TraceLogger | None" = None,
+    use_rag: bool = True,
 ):
     """
     Run the deep thought mode with improved agent topology.
@@ -69,15 +70,17 @@ def run_deep_thought_mode(
         api_key_openai: OpenAI API key (optional)
         api_key_openrouter: OpenRouter API key (optional)
         trace_logger: TraceLogger instance for observability (optional)
+        use_rag: Whether to expose RAG tools to the planner/developer agents
     
     Returns:
         tuple: (generated_code, latency_seconds)
     """
     # Reset RAG query counter for this task (limits to 3 queries)
-    reset_rag_query_count()
+    if use_rag:
+        reset_rag_query_count()
     
     # Set up RAG trace callback if trace_logger is provided
-    if trace_logger:
+    if trace_logger and use_rag:
         def rag_callback(query: str, top_k: int, min_score: float, chunks: list):
             trace_logger.add_rag_query(query, top_k, min_score, chunks)
         set_rag_trace_callback(rag_callback)
@@ -86,10 +89,10 @@ def run_deep_thought_mode(
         llm_settings = _build_llm_settings(selected_model, api_key_openai, api_key_openrouter)
         llm_config = LLMConfig(config_list=llm_settings)
        
-        # Create function map for RAG tools
+        # Create function map for RAG tools (optional)
         function_map = {
             "retrieve_qiskit_docs": retrieve_qiskit_docs,
-        }
+        } if use_rag else {}
        
         # Create agents from external configuration files
         planner = create_assistant_agent("planner", function_map=function_map, llm_overrides=llm_settings)
@@ -237,4 +240,3 @@ def _is_conversational(text: str) -> bool:
     if not any(indicator in text for indicator in code_indicators):
         return True
     return False
-

@@ -10,13 +10,15 @@ import tempfile
 import time
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Dict
 
 # Third-party
 from datasets import load_dataset
 from dotenv import load_dotenv
+from openai import OpenAI
 
 from workflows.deep_thought import run_deep_thought_mode
+from config.constants import OPENROUTER_BASE_URL, OPENROUTER_MODELS, OPENROUTER_PROVIDER_BODY
 from utils.trace_logger import TraceLogger, ModelConfig
 
 # ----------------------------
@@ -34,6 +36,8 @@ def build_cli() -> argparse.Namespace:
                    help="Which dataset variant to use.")
     p.add_argument("--split", default="test", help="Dataset split.")
     p.add_argument("--max-items", type=int, default=None, help="Limit number of tasks for a quick run.")
+    p.add_argument("--mode", choices=["deep", "fast"], default="deep",
+                   help="Generation mode: deep=multi-agent (default), fast=single-turn no-RAG.")
     p.add_argument("--temperature", type=float, default=0.2, help="Sampling temperature.")
     p.add_argument("--max-output-tokens", type=int, default=800, help="Max tokens to generate.")
     p.add_argument("--timeout-sec", type=int, default=45, help="Per-test execution timeout (seconds).")
@@ -76,6 +80,7 @@ class Result:
     difficulty_scale: Optional[str]
     model: str
     file_path: str
+    mode: str
     rag_used: bool
     rag_chunks_used: int
 
@@ -101,6 +106,84 @@ def extract_code_only(text: str) -> str:
     """
     m = CODE_BLOCK_RE.search(text)
     return m.group(1).strip() if m else text.strip()
+
+# ----------------------------
+# Fast mode helpers (no RAG, single-turn)
+# ----------------------------
+def _resolve_chat_settings(selected_model: str, api_key_openai: Optional[str], api_key_openrouter: Optional[str]) -> Dict:
+    """
+    Build OpenAI client settings for OpenAI or OpenRouter models.
+    """
+    use_openrouter = selected_model in OPENROUTER_MODELS or selected_model.startswith("openai/")
+    if use_openrouter:
+        key = api_key_openrouter or os.getenv("OPENROUTER_API_KEY")
+        if not key:
+            raise RuntimeError("OPENROUTER_API_KEY missing for OpenRouter model.")
+        return {
+            "api_key": key,
+            "base_url": OPENROUTER_BASE_URL,
+            "extra_body": OPENROUTER_PROVIDER_BODY,
+        }
+
+    key = api_key_openai or os.getenv("OPENAI_API_KEY")
+    if not key:
+        raise RuntimeError("OPENAI_API_KEY missing for OpenAI model.")
+    return {
+        "api_key": key,
+        "base_url": None,
+        "extra_body": None,
+    }
+
+
+def _build_fast_messages(task: Task) -> List[Dict[str, str]]:
+    """
+    Compose a simple, focused prompt for single-turn generation.
+    """
+    system_msg = (
+        "You are an expert Python+Qiskit engineer. "
+        "Write a correct, self-contained implementation for the requested entry point. "
+        "Respond with a single Python code block only—no explanations."
+    )
+    user_msg = (
+        f"Problem statement:\n{task.prompt}\n\n"
+        f"Implement the function `{task.entry_point}`. "
+        "Include any needed imports or helper functions."
+    )
+    return [
+        {"role": "system", "content": system_msg},
+        {"role": "user", "content": user_msg},
+    ]
+
+
+def generate_fast_completion(
+    task: Task,
+    selected_model: str,
+    temperature: float,
+    max_output_tokens: int,
+    api_key_openai: Optional[str],
+    api_key_openrouter: Optional[str],
+) -> Tuple[str, float]:
+    """
+    Single-turn generation without RAG or multi-agent orchestration.
+    """
+    settings = _resolve_chat_settings(selected_model, api_key_openai, api_key_openrouter)
+    client_kwargs = {"api_key": settings["api_key"]}
+    if settings["base_url"]:
+        client_kwargs["base_url"] = settings["base_url"]
+    client = OpenAI(**client_kwargs)
+
+    messages = _build_fast_messages(task)
+    start = time.time()
+    resp = client.chat.completions.create(
+        model=selected_model,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_output_tokens,
+        extra_body=settings["extra_body"],
+    )
+    latency = time.time() - start
+    content = resp.choices[0].message.content if resp and resp.choices else ""
+    return extract_code_only(content or ""), latency
 
 # ----------------------------
 # Execution harness
@@ -199,8 +282,9 @@ def load_tasks(dataset: str, split: str, limit: Optional[int], difficulty: Optio
 
 def evaluate(args: argparse.Namespace) -> None:
     run_ts = now_stamp()
-    rag_suffix = "_rag" if args.use_rag else "_norag"
-    out_root = Path(args.outdir) / f"{Path(args.dataset).name}_{run_ts}_{args.model.replace('/', '_')}{rag_suffix}"
+    rag_enabled = args.use_rag and args.mode == "deep"
+    rag_suffix = "_rag" if rag_enabled else "_norag"
+    out_root = Path(args.outdir) / f"{Path(args.dataset).name}_{run_ts}_{args.model.replace('/', '_')}_{args.mode}{rag_suffix}"
     gens_dir = out_root / "generations"
     traces_dir = out_root / "traces"
     ensure_dir(gens_dir)
@@ -210,9 +294,12 @@ def evaluate(args: argparse.Namespace) -> None:
     tasks = load_tasks(args.dataset, args.split, args.max_items, args.difficulty, args.task_id)
     difficulty_str = f" (difficulty: {args.difficulty})" if args.difficulty else ""
     print(f"✓ Loaded {len(tasks)} tasks from {args.dataset}:{args.split}{difficulty_str}")
-    print(f"✓ RAG: {'enabled' if args.use_rag else 'disabled'}")
-    if args.use_rag:
+    print(f"✓ Mode: {args.mode}")
+    print(f"✓ RAG: {'enabled' if rag_enabled else 'disabled'}")
+    if rag_enabled:
         print(f"✓ RAG debug log: {out_root / 'rag_debug.log'}")
+    elif args.mode == "fast" and args.use_rag:
+        print("  (note) Fast mode ignores RAG even if --use-rag is set.")
     print(f"✓ Traces directory: {traces_dir}")
     print(f"✓ Output directory: {out_root}\n")
 
@@ -227,7 +314,8 @@ def evaluate(args: argparse.Namespace) -> None:
         pf.write(f"# Evaluation Progress - {run_ts}\n")
         pf.write(f"# Model: {args.model}\n")
         pf.write(f"# Dataset: {args.dataset} ({len(tasks)} tasks)\n")
-        pf.write(f"# RAG: {'enabled' if args.use_rag else 'disabled'}\n")
+        pf.write(f"# Mode: {args.mode}\n")
+        pf.write(f"# RAG: {'enabled' if rag_enabled else 'disabled'}\n")
         pf.write("=" * 60 + "\n\n")
     print(f"✓ Progress tracker: {progress_path}\n")
 
@@ -237,25 +325,26 @@ def evaluate(args: argparse.Namespace) -> None:
 
         # 1) Get / reuse generation
         chunks_used = 0  # Track how many RAG chunks were used
-        trace_logger = None  # Will be created for non-dry runs
+        trace_logger = None  # Will be created for non-dry runs (deep mode)
         
         if args.dry_run and gen_path.exists():
             completion_text = gen_path.read_text(encoding="utf-8")
             latency = 0.0
             print("  (dry-run) Loaded cached completion.")
         else:
-            # Create TraceLogger for this task
-            model_config = ModelConfig(
-                model=args.model,
-                temperature=args.temperature,
-                api_type="openai"
-            )
-            trace_logger = TraceLogger(
-                task_id=t.task_id,
-                entry_point=t.entry_point,
-                prompt=t.prompt,
-                model_config=model_config
-            )
+            # Create TraceLogger for deep mode only
+            if args.mode == "deep":
+                model_config = ModelConfig(
+                    model=args.model,
+                    temperature=args.temperature,
+                    api_type="openai"
+                )
+                trace_logger = TraceLogger(
+                    task_id=t.task_id,
+                    entry_point=t.entry_point,
+                    prompt=t.prompt,
+                    model_config=model_config
+                )
             
             # Generate code with retry logic
             raw_text = None
@@ -265,13 +354,24 @@ def evaluate(args: argparse.Namespace) -> None:
             for attempt in range(max_retries):
                 try:
                     print(f"  Generating code (attempt {attempt + 1}/{max_retries})...")
-                    raw_text, latency = run_deep_thought_mode(
-                        t.prompt,
-                        selected_model=args.model,
-                        api_key_openai=openai_key,
-                        api_key_openrouter=openrouter_key,
-                        trace_logger=trace_logger,
-                    )
+                    if args.mode == "fast":
+                        raw_text, latency = generate_fast_completion(
+                            t,
+                            selected_model=args.model,
+                            temperature=args.temperature,
+                            max_output_tokens=args.max_output_tokens,
+                            api_key_openai=openai_key,
+                            api_key_openrouter=openrouter_key,
+                        )
+                    else:
+                        raw_text, latency = run_deep_thought_mode(
+                            t.prompt,
+                            selected_model=args.model,
+                            api_key_openai=openai_key,
+                            api_key_openrouter=openrouter_key,
+                            trace_logger=trace_logger,
+                            use_rag=rag_enabled,
+                        )
                     # Check if we got valid output
                     if raw_text and raw_text.strip():
                         break
@@ -294,8 +394,9 @@ def evaluate(args: argparse.Namespace) -> None:
             gen_path.write_text(completion_text, encoding="utf-8")
             print(f"  Generated {len(completion_text)} chars in {latency:.2f}s")
             
-            # Update trace logger with chunks used count
-            chunks_used = len(trace_logger.trace.rag_queries)
+            # Update trace logger with chunks used count (deep mode only)
+            if trace_logger:
+                chunks_used = len(trace_logger.trace.rag_queries)
 
         # 2) Build executable combined program
         program = EXEC_TEMPLATE.format(
@@ -323,7 +424,8 @@ def evaluate(args: argparse.Namespace) -> None:
             difficulty_scale=t.difficulty_scale,
             model=args.model,
             file_path=str(gen_path),
-            rag_used=args.use_rag,
+            mode=args.mode,
+            rag_used=rag_enabled,
             rag_chunks_used=chunks_used,
         )
         results.append(res)
@@ -373,8 +475,9 @@ def evaluate(args: argparse.Namespace) -> None:
         "dataset": args.dataset,
         "split": args.split,
         "timestamp": run_ts,
-        "rag_enabled": args.use_rag,
-        "rag_top_k": args.rag_top_k if args.use_rag else None,
+        "mode": args.mode,
+        "rag_enabled": rag_enabled,
+        "rag_top_k": args.rag_top_k if rag_enabled else None,
         "temperature": args.temperature,
         "pass_at_1": pass_at_1,
         "passed": passed_n,
@@ -396,7 +499,7 @@ def evaluate(args: argparse.Namespace) -> None:
     print(f"\n✓ Artifacts written to: {out_root}")
     print(f"✓ Results CSV: {csv_path}")
     print(f"✓ Summary JSON: {out_root / 'summary.json'}")
-    if args.use_rag:
+    if rag_enabled:
         print(f"✓ RAG debug log: {out_root / 'rag_debug.log'}")
 
 if __name__ == "__main__":

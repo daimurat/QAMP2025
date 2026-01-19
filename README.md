@@ -118,21 +118,26 @@ This project uses conda for environment management, which is compatible with qis
 2. **Run the evaluation script:**
    ```bash
    python evaluate_qiskit_humaneval.py --max-items 10
+   # or single-turn, no-RAG fast mode
+   python evaluate_qiskit_humaneval.py --mode fast --no-rag --max-items 3
    ```
 
     | Option | Default | Description |
     |-----------|----------|------|
-    | `--model` | `gpt-4o-mini` | model name |
+    | `--model` | `meta-llama/llama-4-maverick-17b-128e-instruct` (env: `GROQ_EVAL_MODEL`) | model name |
     | `--dataset` | `Qiskit/qiskit_humaneval` | dataset name |
     | `--split` | `test` | dataset split |
     | `--max-items` | `None` | maximum items to evaluate |
+    | `--mode` | `deep` | `deep` (multi-agent) or `fast` (single-turn, no-RAG) |
     | `--temperature` | `0.2` | sampling temperature |
     | `--max-output-tokens` | `800` | maximum output tokens |
     | `--timeout-sec` | `45` | test execution timeout（sec） |
-    | `--use-rag` | `True` | enable RAG |
-    | `--no-rag` | - | disable RAG |
+    | `--use-rag` / `--no-rag` | `True` | enable/disable RAG (ignored in `fast` mode) |
     | `--rag-top-k` | `5` | retrieval top_k |
-    | `--vector-store-path` | `faiss_index` | vectore store path |
+    | `--rag-min-score` | `0.0` | minimum similarity score |
+    | `--db-path` | `QAMP/data/qamp.db` | SQLite vector DB |
+    | `--task-id` | `None` | run a specific task id |
+    | `--difficulty` | `None` | filter by difficulty (basic/intermediate/difficult) |
     | `--outdir` | `out` | output directory |
     | `--dry-run` | `False` | skip inference |
 
