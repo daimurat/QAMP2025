@@ -80,6 +80,8 @@ def _process_user_input(user_input: str):
                 api_key_openrouter=st.session_state.get("saved_api_key_openrouter"),
                 use_rag=True,
             )
+            if isinstance(result, tuple):
+                result = result[0]
             response = Response(content=result)
 
         st.markdown(response.content)
