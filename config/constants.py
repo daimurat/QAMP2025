@@ -23,7 +23,7 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_PROVIDER_BODY = {"provider": {"sort": "price"}}
 
 # RAG Configuration
-RAG_DB_PATH = "QAMP/data/qamp.db"
+RAG_DB_PATH = "data/qamp.db"
 RAG_EMBED_MODEL = "gemini-embedding-001"
 RAG_DEFAULT_TOP_K = 5
 

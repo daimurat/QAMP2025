@@ -12,7 +12,7 @@ import argparse
 import os
 import sys
 
-from workflows.fast import run_fast_mode
+from src.application.workflows.fast import run_fast_mode
 
 
 def parse_args() -> argparse.Namespace:
@@ -70,7 +70,6 @@ def main():
 
     result = run_fast_mode(
         user_input=args.prompt,
-        vector_store=None,  # No vector store when RAG is off
         selected_model=args.model,
         api_key_openai=args.openai_key,
         api_key_openrouter=args.openrouter_key,
