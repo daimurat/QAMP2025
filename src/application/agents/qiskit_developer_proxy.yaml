@@ -3,15 +3,19 @@ name: QiskitDeveloperProxy
 type: user_proxy
 
 description: |
-  Proxy that manages communication between QiskitDeveloper and code execution
+  Proxy that executes generated Qiskit code and provides feedback.
+  When code fails, the error is fed back to QiskitDeveloper for fixing.
 
 proxy_config:
   human_input_mode: NEVER
-  max_consecutive_auto_reply: 10
+  # Allow up to 3 retry iterations for code fixing
+  max_consecutive_auto_reply: 3
   code_execution_config:
     work_dir: work
-    last_n_messages: 1
+    # Execute code from the last 3 messages to capture corrections
+    last_n_messages: 3
     use_docker: false
-  # function_map will be set at runtime in deep_thought.py
+    # Timeout for code execution (seconds)
+    timeout: 60
 
 # Made with Bob

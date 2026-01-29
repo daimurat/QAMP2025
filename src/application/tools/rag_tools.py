@@ -8,10 +8,23 @@ for use with AutoGen's function calling feature.
 from typing import Annotated
 from config.constants import RAG_DB_PATH
 from src.rag import RAGRetriever
+from src.utils.trace_logger import get_rag_trace_callback
 
 # Global retriever instance (initialized once, reused across calls)
 _retriever = None
 
+# Session-based RAG query limiting
+MAX_RAG_QUERIES_PER_TASK = 3
+_rag_query_count = 0
+
+def reset_rag_query_count():
+    """Reset the RAG query counter. Call this at the start of each task."""
+    global _rag_query_count
+    _rag_query_count = 0
+
+def get_rag_query_count() -> int:
+    """Get the current RAG query count for this session."""
+    return _rag_query_count
 
 def get_retriever() -> RAGRetriever:
     """
@@ -24,6 +37,7 @@ def get_retriever() -> RAGRetriever:
     if _retriever is None:
         _retriever = RAGRetriever(db_path=RAG_DB_PATH)
     return _retriever
+
 
 
 def retrieve_qiskit_docs(
@@ -52,6 +66,18 @@ def retrieve_qiskit_docs(
         >>> result = retrieve_qiskit_docs("How do I create a Bell state?", top_k=3)
         >>> print(result)
     """
+    # Check RAG query limit
+    global _rag_query_count
+    if _rag_query_count >= MAX_RAG_QUERIES_PER_TASK:
+        return (
+            f"RAG query limit reached ({MAX_RAG_QUERIES_PER_TASK} queries per task). "
+            f"Please proceed with your existing knowledge and the information already retrieved. "
+            f"Generate the implementation based on what you know about Qiskit."
+        )
+    
+    # Increment query count
+    _rag_query_count += 1
+    
     # Validate parameters
     if not query or not query.strip():
         return "Error: Query cannot be empty."
@@ -91,6 +117,11 @@ def retrieve_qiskit_docs(
             result_parts.append(f"URL: {chunk.get('url', 'N/A')}")
             result_parts.append(f"\nContent:\n{chunk['text']}")
         
+        # Invoke trace callback if set
+        trace_callback = get_rag_trace_callback()
+        if trace_callback:
+            trace_callback(query, top_k, min_score, chunks)
+        
         return "\n".join(result_parts)
     
     except FileNotFoundError as e:
@@ -117,6 +148,9 @@ __all__ = [
     "retrieve_qiskit_docs",
     "get_retriever",
     "close_retriever",
+    "reset_rag_query_count",
+    "get_rag_query_count",
+    "MAX_RAG_QUERIES_PER_TASK",
 ]
 
 # Made with Bob

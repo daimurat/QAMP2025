@@ -33,7 +33,7 @@ inject_global_styles_and_font("Jersey 10")
 render_header()
 
 # sidebar display
-api_key, api_key_gai = sidebar.render_sidebar()
+api_key, api_key_gai, api_key_openrouter = sidebar.render_sidebar()
 
 # chat interface display
 chat_interface.render_chat_interface()
